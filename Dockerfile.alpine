@@ -1,0 +1,13 @@
+FROM alpine:3
+
+RUN apk add --no-cache imagemagick-dev imagemagick-jpeg imagemagick-webp boost-dev cmake g++ make
+
+WORKDIR /app
+COPY CMakeLists.txt .
+COPY src src
+COPY vendor vendor
+
+WORKDIR /app/build
+RUN cmake -DCMAKE_BUILD_TYPE=Release .. && make -j
+
+ENTRYPOINT [ "./asset-server" ]
