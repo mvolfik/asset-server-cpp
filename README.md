@@ -17,9 +17,13 @@ Repository also contains working two Dockerfiles, using Debian and Alpine as bas
 
 Windows: untested. Magick says it works under Cygwin.
 
+## Testing
+
+`curl -i 'http://0.0.0.0:8000/api/upload?filename=any_filename_that_you_choose_suffix_doesnt_matter.png' -X POST --data-binary @$HOME/Pictures/image.jpg`
+
 ---
 
-### License
+## License
 
 The HTTP server, forming the core of the project, was kickstarted with an example from https://github.com/boostorg/beast/blob/9d05ef58d19672d91475e6be6f746d9bdb031362/example/http/server/small/http_server_small.cpp, which is licensed under the Boost license. Therefore it is easiest to license this project under the Boost license as well.
 
