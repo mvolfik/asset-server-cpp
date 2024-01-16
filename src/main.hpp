@@ -18,7 +18,7 @@
 struct worker_data
 {
   boost::beast::multi_buffer const& data;
-  std::string_view filename;
+  std::string filename;
 };
 
 std::string
@@ -175,7 +175,8 @@ private:
   void process_request()
   {
     auto const& request = request_parser.get();
-    auto url = ada::parse<ada::url>("http://example.com" + std::string(request.target()));
+    auto url = ada::parse<ada::url>("http://example.com" +
+                                    std::string(request.target()));
     if (!url) {
       response_.result(boost::beast::http::status::internal_server_error);
       boost::beast::ostream(response_.body())
@@ -208,8 +209,9 @@ private:
     }
     // start image processing in the thread pool; the pool calls
     // respond_with_data when done with the task
-    pool_.add_task({ request.body(), params.get("filename").value() },
-                   shared_from_this());
+    pool_.add_task(
+      { request.body(), std::string(params.get("filename").value()) },
+      shared_from_this());
   }
 
   void write_response()

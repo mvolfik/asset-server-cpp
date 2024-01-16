@@ -8,8 +8,8 @@ json_sanitize_string(std::string const& s)
     std::move(without_backslash), std::regex("\""), "\\\"");
 }
 
-std::string_view
-remove_suffix(std::string_view s)
+std::string
+remove_suffix(std::string const& s)
 {
   auto pos = s.find_last_of('.');
   if (pos == std::string_view::npos || pos < s.length() - 5)
