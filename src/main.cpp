@@ -24,6 +24,9 @@ main(int argc, char* argv[])
     std::cerr << "Listening on http://" << ip << ":" << port << std::endl;
 
     boost::asio::io_context ctx;
+    boost::asio::signal_set signals(ctx, SIGINT, SIGTERM);
+    signals.async_wait(
+      [&](boost::beast::error_code const&, int) { ctx.stop(); });
 
     auto address = boost::asio::ip::make_address_v4(ip);
     boost::asio::ip::tcp::acceptor acceptor{ ctx, { address, port } };
@@ -33,9 +36,11 @@ main(int argc, char* argv[])
     http_server(acceptor, socket, pool);
 
     ctx.run();
+    pool.blocking_shutdown();
   } catch (std::exception const& e) {
     std::cerr << "Error: " << e.what() << std::endl;
     return 1;
   }
+
   return 0;
 }

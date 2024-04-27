@@ -15,15 +15,18 @@ private:
   std::vector<std::thread>
     threads; // general TODO (not just here): do some proper shutdown on SIGINT
   boost::asio::io_context ctx;
+  std::atomic_bool shutdown{ false };
 
 public:
   thread_pool(int n)
   {
     for (int i = 0; i < n; i++) {
       threads.emplace_back([this] {
-        while (true) {
+        while (!shutdown) {
           std::unique_lock<std::mutex> lock(mutex);
-          cv.wait(lock, [this] { return !tasks.empty(); });
+          cv.wait(lock, [this] { return !tasks.empty() || shutdown; });
+          if (shutdown)
+            break;
           std::shared_ptr<Executor> executor = tasks.front();
           tasks.pop_front();
           lock.unlock();
@@ -38,6 +41,14 @@ public:
     std::unique_lock<std::mutex> lock(mutex);
     tasks.emplace_back(conn);
     cv.notify_one();
+  }
+
+  void blocking_shutdown()
+  {
+    shutdown = true;
+    cv.notify_all();
+    for (auto& t : threads)
+      t.join();
   }
 };
 

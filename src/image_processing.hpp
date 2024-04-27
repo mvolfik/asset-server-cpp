@@ -4,6 +4,8 @@
 #include <iostream>
 #include <variant>
 
+#include <boost/beast/core/span.hpp>
+
 #include <Magick++.h>
 
 #include "string_utils.hpp"
@@ -52,27 +54,33 @@ struct processing_result
 
 struct worker_request_data
 {
-  boost::beast::multi_buffer const& data;
+  boost::beast::span<std::uint8_t> data;
   std::string filename;
 };
 
 std::variant<processing_result, std::string>
-process_data(worker_request_data request)
+process_data(worker_request_data request, std::atomic_bool& cancelled_flag)
 {
-  auto data = std::move(request.data);
-  boost::beast::flat_buffer buffer;
-  boost::asio::buffer_copy(buffer.prepare(data.size()), data.data());
-  buffer.commit(data.size());
+  if (cancelled_flag) {
+    std::cerr << "Cancelled processing" << std::endl;
+    return "error.cancelled";
+  }
 
   Magick::Image image;
   try {
-    image = (Magick::Blob(buffer.data().data(), buffer.data().size()));
+    image = (Magick::Blob(request.data.data(), request.data.size()));
   } catch (std::exception const& e) {
     std::cerr << "Error reading image: " << e.what() << std::endl;
     return "error.likely_corrupted_image";
   }
 
   image.resize(Magick::Geometry(100, 100, 0, 0));
+
+  if (cancelled_flag) {
+    std::cerr << "Cancelled processing" << std::endl;
+    return "error.cancelled";
+  }
+
   auto filename = sanitize_filename(remove_suffix(request.filename));
 
   try {
