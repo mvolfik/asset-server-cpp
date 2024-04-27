@@ -1,6 +1,8 @@
-FROM alpine:3
+FROM alpine:3 as builder
 
 RUN apk add --no-cache imagemagick-dev imagemagick-jpeg imagemagick-webp boost-dev cmake g++ make
+
+
 
 WORKDIR /app
 COPY CMakeLists.txt .
@@ -9,5 +11,14 @@ COPY vendor vendor
 
 WORKDIR /app/build
 RUN cmake -DCMAKE_BUILD_TYPE=Release .. && make -j
+
+FROM alpine:3
+
+RUN apk add --no-cache imagemagick-c++
+# imagemagick-jpeg imagemagick-webp?
+
+
+WORKDIR /app
+COPY --from=builder /app/build/asset-server .
 
 ENTRYPOINT [ "./asset-server" ]

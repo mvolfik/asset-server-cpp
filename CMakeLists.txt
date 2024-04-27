@@ -16,8 +16,8 @@ find_package(Boost REQUIRED)
 
 # MAIN
 set(MAIN_EXE "asset-server")
-add_executable(${MAIN_EXE} "src/main.cpp" "src/main.hpp" "vendor/ada.cpp" "vendor/ada.hpp")
-add_compile_definitions("MAGICKCORE_HDRI_ENABLE=0" "MAGICKCORE_QUANTUM_DEPTH=16")
+add_executable(${MAIN_EXE} "src/main.cpp" "vendor/ada.cpp")
+target_compile_definitions(${MAIN_EXE} PRIVATE "MAGICKCORE_HDRI_ENABLE=0" "MAGICKCORE_QUANTUM_DEPTH=16")
 
 target_include_directories(${MAIN_EXE} PRIVATE ${ImageMagick_INCLUDE_DIRS})
 target_link_libraries(${MAIN_EXE} PRIVATE ${ImageMagick_LIBRARIES})

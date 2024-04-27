@@ -42,6 +42,7 @@ process_data(worker_data request)
   try {
     image = (Magick::Blob(buffer.data().data(), buffer.data().size()));
   } catch (std::exception const& e) {
+    std::cerr << "Error reading image: " << e.what() << std::endl;
     return "error.likely_corrupted_image";
   }
 
