@@ -57,11 +57,8 @@ private:
     request_parser;
   boost::beast::http::response<boost::beast::http::dynamic_body> response;
 
-  // TODO: make these limits configurable
-  boost::asio::steady_timer socket_kill_deadline{ socket.get_executor(),
-                                                  std::chrono::seconds(10) };
-  boost::asio::steady_timer processing_stop_deadline{ socket.get_executor(),
-                                                      std::chrono::seconds(8) };
+  boost::asio::steady_timer socket_kill_deadline;
+  boost::asio::steady_timer processing_stop_deadline;
 
   std::vector<std::shared_ptr<resize_executor>> my_executors;
 
@@ -182,6 +179,8 @@ private:
   void kill_socket_on_deadline()
   {
     auto self = shared_from_this();
+    socket_kill_deadline.expires_from_now(
+      std::chrono::seconds(cfg.socket_kill_timeout_secs));
 
     socket_kill_deadline.async_wait([self](boost::beast::error_code ec) {
       if (ec) {
@@ -198,6 +197,8 @@ private:
   void stop_processing_on_deadline()
   {
     auto self = shared_from_this();
+    processing_stop_deadline.expires_from_now(
+      std::chrono::seconds(cfg.processing_timeout_secs));
 
     processing_stop_deadline.async_wait([self](boost::beast::error_code ec) {
       if (ec) {
@@ -231,6 +232,8 @@ public:
     : socket(std::move(socket))
     , pool(pool)
     , cfg(cfg)
+    , socket_kill_deadline(socket.get_executor())
+    , processing_stop_deadline(socket.get_executor())
   {
   }
 
