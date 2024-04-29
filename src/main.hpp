@@ -12,6 +12,7 @@
 
 #include "../vendor/ada.hpp"
 
+#include "config.hpp"
 #include "image_processing.hpp"
 #include "string_utils.hpp"
 #include "thread_pool.hpp"
@@ -46,6 +47,7 @@ private:
   friend void resize_executor::perform_work();
 
   worker_pool_t& pool;
+  config const& cfg;
   boost::asio::ip::tcp::socket socket;
   // A buffer for performing reads.
   boost::beast::flat_buffer buffer{ 8192 };
@@ -223,9 +225,12 @@ private:
   }
 
 public:
-  http_connection(boost::asio::ip::tcp::socket socket, worker_pool_t& pool)
+  http_connection(boost::asio::ip::tcp::socket socket,
+                  worker_pool_t& pool,
+                  config const& cfg)
     : socket(std::move(socket))
     , pool(pool)
+    , cfg(cfg)
   {
   }
 

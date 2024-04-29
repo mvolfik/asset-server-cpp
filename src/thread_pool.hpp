@@ -12,8 +12,7 @@ private:
   std::condition_variable cv;
   /// lock the mutex before accessing this, wait on CV if no tasks are available
   std::deque<std::shared_ptr<Executor>> tasks;
-  std::vector<std::thread>
-    threads; // general TODO (not just here): do some proper shutdown on SIGINT
+  std::vector<std::thread> threads;
   boost::asio::io_context ctx;
   std::atomic_bool shutdown{ false };
 

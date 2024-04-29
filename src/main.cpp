@@ -3,25 +3,52 @@
 void
 http_server(boost::asio::ip::tcp::acceptor& acceptor,
             boost::asio::ip::tcp::socket& socket,
-            http_connection::worker_pool_t& pool)
+            http_connection::worker_pool_t& pool,
+            config const& cfg)
 {
   acceptor.async_accept(socket, [&](boost::beast::error_code ec) {
     // start the request, and "recurse" to accept next connection (it just
     // calls the function again, passing the references through, and the
     // previous call returns)
     if (!ec)
-      std::make_shared<http_connection>(std::move(socket), pool)->start();
-    http_server(acceptor, socket, pool);
+      std::make_shared<http_connection>(std::move(socket), pool, cfg)->start();
+    http_server(acceptor, socket, pool, cfg);
   });
 }
+
+enum class argv_parse_state
+{
+  none,
+  cfg_file,
+};
 
 int
 main(int argc, char* argv[])
 {
   try {
+    const char* cfg_file = "asset-server.cfg";
+    argv_parse_state state = argv_parse_state::none;
+    for (int i = 1; i < argc; i++) {
+      if (strcmp(argv[i], "--help") == 0) {
+        std::cout << "Usage: " << argv[0] << " [--config-file <file>]"
+                  << std::endl;
+        return 0;
+      } else if (state == argv_parse_state::cfg_file) {
+        cfg_file = argv[i];
+        state = argv_parse_state::none;
+      } else if (strcmp(argv[i], "--config-file") == 0) {
+        state = argv_parse_state::cfg_file;
+      } else {
+        throw std::runtime_error("Unknown argument: " + std::string(argv[i]));
+      }
+    }
+    if (state == argv_parse_state::cfg_file)
+      throw std::runtime_error("Expected argument for --config-file");
+
+    config cfg = parse_config(cfg_file);
+
     const char* ip = "0.0.0.0";
     unsigned short port = 8000;
-    std::cerr << "Listening on http://" << ip << ":" << port << std::endl;
 
     boost::asio::io_context ctx;
     boost::asio::signal_set signals(ctx, SIGINT, SIGTERM);
@@ -33,7 +60,8 @@ main(int argc, char* argv[])
     boost::asio::ip::tcp::socket socket{ ctx };
 
     http_connection::worker_pool_t pool(2);
-    http_server(acceptor, socket, pool);
+    std::cerr << "Listening on http://" << ip << ":" << port << std::endl;
+    http_server(acceptor, socket, pool, cfg);
 
     ctx.run();
     pool.blocking_shutdown();
