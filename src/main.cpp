@@ -59,7 +59,7 @@ main(int argc, char* argv[])
     boost::asio::ip::tcp::acceptor acceptor{ ctx, { address, port } };
     boost::asio::ip::tcp::socket socket{ ctx };
 
-    http_connection::worker_pool_t pool(2);
+    http_connection::worker_pool_t pool(cfg.get_thread_pool_size());
     std::cerr << "Listening on http://" << ip << ":" << port << std::endl;
     http_server(acceptor, socket, pool, cfg);
 

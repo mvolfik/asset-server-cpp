@@ -13,11 +13,11 @@ struct config
 
   std::optional<unsigned> thread_pool_size;
 
-  unsigned upload_limit_bytes = 1024 * 1024 * 10;
+  unsigned upload_limit_bytes = 20 * 1024 * 1024;
 
   unsigned get_thread_pool_size() const
   {
-    return thread_pool_size.value_or(std::thread::hardware_concurrency());
+    return thread_pool_size.value_or(std::thread::hardware_concurrency() + 1);
   }
 };
 
@@ -32,6 +32,7 @@ parse_bytes(std::string const& s, std::string const& prop_name)
                                  ": " + s);
 
       switch (s[i]) {
+        case 'k':
         case 'K':
           val *= 1024;
           break;
@@ -83,13 +84,20 @@ parse_config(const char* filename)
     } else if (key == "socket_kill_timeout_secs") {
       cfg.socket_kill_timeout_secs = std::stoi(value);
     } else if (key == "thread_pool_size") {
-      cfg.thread_pool_size = parse_bytes(value, "thread_pool_size");
+      cfg.thread_pool_size = std::stoi(value);
     } else if (key == "upload_limit") {
       cfg.upload_limit_bytes = parse_bytes(value, "upload_limit");
     } else {
       throw std::runtime_error("Unknown config key: " + key);
     }
   }
+
+  if (cfg.socket_kill_timeout_secs <= cfg.processing_timeout_secs)
+    throw std::runtime_error(
+      "socket_kill_timeout_secs must be greater than processing_timeout_secs");
+
+  if (cfg.processing_timeout_secs == 0)
+    throw std::runtime_error("processing_timeout_secs must be greater than 0");
 
   return cfg;
 }

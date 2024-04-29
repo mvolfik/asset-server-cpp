@@ -240,8 +240,7 @@ public:
   // Initiate the asynchronous operations associated with the connection.
   void start()
   {
-    request_parser.body_limit(1024 * 1024 *
-                              5); // TODO: make this limit configurable
+    request_parser.body_limit(cfg.upload_limit_bytes);
 
     auto self = shared_from_this();
 
