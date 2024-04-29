@@ -53,7 +53,7 @@ private:
   boost::beast::flat_buffer buffer{ 8192 };
 
   boost::beast::http::request_parser<
-    boost::beast::http::span_body<std::uint8_t>>
+    boost::beast::http::vector_body<std::uint8_t>>
     request_parser;
   boost::beast::http::response<boost::beast::http::dynamic_body> response;
 

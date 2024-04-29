@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <variant>
+#include <vector>
 
 #include <boost/beast/core/span.hpp>
 
@@ -54,7 +55,7 @@ struct processing_result
 
 struct worker_request_data
 {
-  boost::beast::span<std::uint8_t> data;
+  std::vector<std::uint8_t> data;
   std::string filename;
 };
 
