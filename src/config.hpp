@@ -124,6 +124,9 @@ parse_bytes(std::string const& s)
 
 struct config
 {
+  std::string listen_host = "127.0.0.1";
+  unsigned short listen_port = 8000;
+
   unsigned processing_timeout_secs = 8;
   unsigned socket_kill_timeout_secs = 10;
 
@@ -192,7 +195,11 @@ struct config
       auto value = line.substr(pos + 1);
 
       try {
-        if (key == "processing_timeout_secs") {
+        if (key == "listen_host") {
+          cfg.listen_host = value;
+        } else if (key == "listen_port") {
+          cfg.listen_port = std::stoi(value);
+        } else if (key == "processing_timeout_secs") {
           cfg.processing_timeout_secs = std::stoi(value);
         } else if (key == "socket_kill_timeout_secs") {
           cfg.socket_kill_timeout_secs = std::stoi(value);

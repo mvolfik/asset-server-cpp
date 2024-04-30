@@ -47,20 +47,25 @@ main(int argc, char* argv[])
 
     config cfg = config::parse(cfg_file);
 
-    const char* ip = "0.0.0.0";
-    unsigned short port = 8000;
-
     boost::asio::io_context ctx;
     boost::asio::signal_set signals(ctx, SIGINT, SIGTERM);
     signals.async_wait(
       [&](boost::beast::error_code const&, int) { ctx.stop(); });
 
-    auto address = boost::asio::ip::make_address_v4(ip);
-    boost::asio::ip::tcp::acceptor acceptor{ ctx, { address, port } };
+    boost::asio::ip::address address;
+    try {
+      address = boost::asio::ip::make_address_v4(cfg.listen_host);
+    } catch (std::exception const& e) {
+      throw std::runtime_error("Invalid listen_host: '" + cfg.listen_host +
+                               "': " + e.what());
+    }
+    boost::asio::ip::tcp::acceptor acceptor{ ctx,
+                                             { address, cfg.listen_port } };
     boost::asio::ip::tcp::socket socket{ ctx };
 
     http_connection::worker_pool_t pool(cfg.get_thread_pool_size());
-    std::cerr << "Listening on http://" << ip << ":" << port << std::endl;
+    std::cerr << "Listening on http://" << cfg.listen_host << ":"
+              << cfg.listen_port << std::endl;
     http_server(acceptor, socket, pool, cfg);
 
     ctx.run();
