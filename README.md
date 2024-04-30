@@ -1,5 +1,21 @@
 # Asset server
 
+Specifikace: [specifikace.md](specifikace.md)
+
+para IMPL:
+
+podiva se jestli existuje. kdyz jo, hotovo
+lockne mutex hashmap<hash, vec<notifier>>
+jestli existuje entry, vytvori si notifier, prida ho do vectoru. unlockne a spi, po probuzeni ma hotovo
+vytvori entry []
+unlockne
+zpracuje request v tmpdir
+rename do target lokace
+lockne
+notify vsechny notifiery
+rm entry
+unlock
+
 Tech demo as of right now.
 
 Build and run on Debian:

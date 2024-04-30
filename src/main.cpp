@@ -45,7 +45,7 @@ main(int argc, char* argv[])
     if (state == argv_parse_state::cfg_file)
       throw std::runtime_error("Expected argument for --config-file");
 
-    config cfg = parse_config(cfg_file);
+    config cfg = config::parse(cfg_file);
 
     const char* ip = "0.0.0.0";
     unsigned short port = 8000;
