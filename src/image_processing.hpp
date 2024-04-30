@@ -53,18 +53,29 @@ struct processing_result
   }
 };
 
+struct processing_error_result
+{
+  std::string error;
+  boost::beast::http::status response_code;
+};
+
+struct processing_empty_result{};
+
 struct worker_request_data
 {
   std::vector<std::uint8_t> data;
   std::string filename;
 };
 
-std::variant<processing_result, std::string>
+
+std::variant<processing_result, processing_error_result, processing_empty_result>
 process_data(worker_request_data request, std::atomic_bool& cancelled_flag)
 {
   if (cancelled_flag) {
-    std::cerr << "Cancelled processing" << std::endl;
-    return "error.cancelled";
+    std::cerr << "Cancelled processing at start" << std::endl;
+    return processing_error_result{
+      "error.cancelled", boost::beast::http::status::service_unavailable
+    };
   }
 
   Magick::Image image;
@@ -72,14 +83,17 @@ process_data(worker_request_data request, std::atomic_bool& cancelled_flag)
     image = (Magick::Blob(request.data.data(), request.data.size()));
   } catch (std::exception const& e) {
     std::cerr << "Error reading image: " << e.what() << std::endl;
-    return "error.likely_corrupted_image";
+    return processing_error_result{ "error.likely_corrupted_image",
+                                    boost::beast::http::status::bad_request };
   }
 
   image.resize(Magick::Geometry(100, 100, 0, 0));
 
   if (cancelled_flag) {
-    std::cerr << "Cancelled processing" << std::endl;
-    return "error.cancelled";
+    std::cerr << "Cancelled processing after resize" << std::endl;
+    return processing_error_result{
+      "error.cancelled", boost::beast::http::status::service_unavailable
+    };
   }
 
   auto filename = sanitize_filename(remove_suffix(request.filename));
@@ -89,7 +103,10 @@ process_data(worker_request_data request, std::atomic_bool& cancelled_flag)
     image.write("data/" + filename + ".webp");
   } catch (std::exception const& e) {
     std::cerr << "Error writing file: " << e.what() << std::endl;
-    return "error.server_error";
+    return processing_error_result{
+      "error.error_writing_file",
+      boost::beast::http::status::internal_server_error
+    };
   }
 
   return processing_result{ filename, { { 100, 100 } }, { "jpg", "webp" } };

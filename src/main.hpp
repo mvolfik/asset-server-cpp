@@ -49,7 +49,7 @@ private:
   worker_pool_t& pool;
   config const& cfg;
   boost::asio::ip::tcp::socket socket;
-  // A buffer for performing reads.
+  /** A buffer for performing reads. */
   boost::beast::flat_buffer buffer{ 8192 };
 
   boost::beast::http::request_parser<
@@ -60,9 +60,42 @@ private:
   boost::asio::steady_timer socket_kill_deadline;
   boost::asio::steady_timer processing_stop_deadline;
 
-  std::vector<std::shared_ptr<resize_executor>> my_executors;
+  using pending_jobs_t = std::uint16_t;
 
-  std::atomic_bool started_sending_response{ false };
+  /**
+   * This is incremented for the first time when the first worker is started. If
+   * a worker needs to start more jobs, it should increment this value before
+   * decrementing it (because it itself finished). That way, if a worker
+   * finishes and notices the new value is 0, it knows it was the last one and
+   * can start the response.
+   */
+  std::atomic<pending_jobs_t> pending_jobs{ 0 };
+  /**
+   * May only be written by the first started worker (which reads the image and
+   * generates variant sizes + formats), and may only be read by respond(),
+   * which is called after the last worker finishes. These stages are
+   * synchronized by pending_jobs.
+   */
+  std::optional<processing_result> result;
+
+  /**
+   * When an error (or timeout) happens, do
+   * pending_jobs.fetch_and_set(SET_VALUE). If the old value was
+   * < COMPARE_MIN_VALUE, send an error response.
+   *
+   * Why this logic: after some worker thread (or timeout) sets pending_jobs
+   * to SET_VALUE, it might be decremented by some workers finishing, so you
+   * can't check by direct comparison. However, we should never spawn more
+   * workers than pending_jobs_t::max/2, so you can still detect that an error
+   * already happened (and response was therefore sent) if pending_jobs is >=
+   * COMPARE_MIN_VALUE.
+   */
+  static constexpr pending_jobs_t PENDING_JOBS_ERROR_COMPARE_MIN_VALUE =
+    std::numeric_limits<pending_jobs_t>::max() / 2;
+  static constexpr pending_jobs_t PENDING_JOBS_ERROR_SET_VALUE =
+    std::numeric_limits<pending_jobs_t>::max();
+
+  std::vector<std::shared_ptr<resize_executor>> my_executors;
 
   void write_error_body(std::string_view reason)
   {
@@ -70,24 +103,40 @@ private:
       << "{\"error\": \"" << reason << "\"}";
   }
 
-  void respond_with_data(
-    std::variant<processing_result, std::string> const& result)
+  /**
+   * This is called from worker::perform_work() when if finishes its job, it
+   * is the last one to do so, and error response wasn't sent. All this info is
+   * synchronized by the pending_jobs atomic variable.
+   */
+  void respond()
   {
-    auto response_already_sent = started_sending_response.exchange(true);
-    if (response_already_sent) {
-      std::cerr << "Processing finished, but timeout response was already sent"
-                << std::endl;
+    if (!result) {
+      std::cerr
+        << "Internal error (bug): called respond(), but no result was set"
+        << std::endl;
+      check_and_respond_with_error(processing_error_result{
+        "error.internal", boost::beast::http::status::internal_server_error });
       return;
     }
+    result->write_json(boost::beast::ostream(response.body()));
 
-    if (std::holds_alternative<std::string>(result)) {
-      response.result(boost::beast::http::status::internal_server_error);
-      write_error_body(json_sanitize_string(std::get<std::string>(result)));
-    } else {
-      std::get<processing_result>(result).write_json(
-        boost::beast::ostream(response.body()));
+    write_response();
+  }
+
+  void check_and_respond_with_error(processing_error_result const& error)
+  {
+    auto value_before_write =
+      pending_jobs.exchange(PENDING_JOBS_ERROR_SET_VALUE);
+    if (value_before_write >= PENDING_JOBS_ERROR_COMPARE_MIN_VALUE)
+      return;
+
+    // abort all executors
+    for (auto& executor : my_executors) {
+      executor->cancel();
     }
 
+    response.result(error.response_code);
+    write_error_body(error.error);
     write_response();
   }
 
@@ -101,16 +150,16 @@ private:
 
     if (read_ec) {
       if (read_ec == boost::beast::http::error::body_limit) {
-        response.result(boost::beast::http::status::payload_too_large);
-        write_error_body("error.payload_too_large");
+        check_and_respond_with_error(processing_error_result{
+          "error.payload_too_large",
+          boost::beast::http::status::payload_too_large });
       } else {
         std::cerr << "Error reading request: " << read_ec.message()
                   << std::endl;
-        response.result(boost::beast::http::status::internal_server_error);
-        write_error_body("error.server_error");
+        check_and_respond_with_error(processing_error_result{
+          "error.bad_request", boost::beast::http::status::bad_request });
       }
 
-      write_response();
       return;
     }
 
@@ -118,47 +167,45 @@ private:
                                     std::string(request.target()));
     if (!url) {
       std::cerr << "Error parsing URL: " << request.target() << std::endl;
-      response.result(boost::beast::http::status::internal_server_error);
-      write_error_body("error.server_error");
-      write_response();
+      check_and_respond_with_error(processing_error_result{
+        "error.internal", boost::beast::http::status::internal_server_error });
       return;
     }
     if (url->get_pathname() != "/api/upload") {
-      response.result(boost::beast::http::status::not_found);
-      write_error_body("error.not_found");
-      write_response();
+      check_and_respond_with_error(processing_error_result{
+        "error.not_found", boost::beast::http::status::not_found });
       return;
     }
     if (request.method() != boost::beast::http::verb::post) {
-      response.result(boost::beast::http::status::method_not_allowed);
-      write_error_body("error.method_not_allowed");
-      write_response();
+      check_and_respond_with_error(processing_error_result{
+        "error.method_not_allowed",
+        boost::beast::http::status::method_not_allowed });
       return;
     }
 
     ada::url_search_params params(url->get_search());
     if (!params.has("filename")) {
-      response.result(boost::beast::http::status::bad_request);
-      write_error_body("error.missing_filename");
-      write_response();
+      check_and_respond_with_error(processing_error_result{
+        "error.missing_filename", boost::beast::http::status::bad_request });
       return;
     }
 
     // add the hook to send processing_timeout error if the processing takes too
     // long then we need to ensure that we write the response data only once.
     // From this point, there are two places where that can happen: in the
-    // stop_processing_on_deadline hook, or in respond_with_data, called by the
+    // stop_processing_on_deadline hook, or in respond, called by the
     // executor. Both of these places (and any added in future) need to check
     // that the response wasn't set yet by the other fibre.
     stop_processing_on_deadline();
 
     // start image processing in the thread pool; the pool calls
-    // respond_with_data when done with the task
+    // respond when done with the task
     worker_request_data data{ request.body(),
                               std::string(params.get("filename").value()) };
     auto executor =
       std::make_shared<resize_executor>(weak_from_this(), std::move(data));
     my_executors.push_back(executor);
+    pending_jobs.fetch_add(1);
     pool.add_task(executor);
   }
 
@@ -210,18 +257,9 @@ private:
 
       std::cerr << "Timeout: stopping processing" << std::endl;
 
-      for (auto& executor : self->my_executors) {
-        executor->cancel();
-      }
-
-      auto response_already_sent =
-        self->started_sending_response.exchange(true);
-      if (response_already_sent)
-        return;
-
-      self->response.result(boost::beast::http::status::service_unavailable);
-      self->write_error_body("error.processing_timed_out");
-      self->write_response();
+      self->check_and_respond_with_error(processing_error_result{
+        "error.processing_timed_out",
+        boost::beast::http::status::service_unavailable });
     });
   }
 
@@ -260,8 +298,24 @@ void
 resize_executor::perform_work()
 {
   auto result = process_data(std::move(data), cancelled);
-  if (std::shared_ptr<http_connection> upgraded = conn.lock()) {
-    upgraded->respond_with_data(result);
+  std::shared_ptr<http_connection> upgraded = conn.lock();
+
+  if (upgraded) {
+    if (std::holds_alternative<processing_error_result>(result)) {
+      // handle error
+      upgraded->check_and_respond_with_error(
+        std::get<processing_error_result>(result));
+    } else {
+      // save the result if any, start response if this is the last worker
+      // finishing
+      if (std::holds_alternative<processing_result>(result)) {
+        upgraded->result = std::get<processing_result>(result);
+      } // else: result is processing_empty_result, noop
+
+      auto value_before_write = upgraded->pending_jobs.fetch_sub(1);
+      if (value_before_write == 1)
+        upgraded->respond();
+    }
   } else {
     std::cerr << "Connection was already destroyed" << std::endl;
   }
