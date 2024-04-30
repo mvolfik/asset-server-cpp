@@ -17,9 +17,9 @@ private:
   std::atomic_bool shutdown{ false };
 
 public:
-  thread_pool(int n)
+  thread_pool(unsigned n)
   {
-    for (int i = 0; i < n; i++) {
+    for (unsigned i = 0; i < n; i++) {
       threads.emplace_back([this] {
         while (!shutdown) {
           std::unique_lock<std::mutex> lock(mutex);

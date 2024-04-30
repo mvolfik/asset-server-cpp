@@ -1,8 +1,8 @@
 #ifndef STRING_UTILS_HPP
 #define STRING_UTILS_HPP
 
-#include <string>
 #include <regex>
+#include <string>
 
 std::string
 remove_suffix(std::string const& s)
@@ -11,14 +11,6 @@ remove_suffix(std::string const& s)
   if (pos == std::string_view::npos || pos < s.length() - 5)
     return s;
   return s.substr(0, pos);
-}
-
-std::string
-json_sanitize_string(std::string const& s)
-{
-  auto without_backslash = std::regex_replace(s, std::regex("\\\\"), "\\\\");
-  return std::regex_replace(
-    std::move(without_backslash), std::regex("\""), "\\\"");
 }
 
 std::string
@@ -32,6 +24,32 @@ sanitize_filename(std::string_view const& s)
       result += '_';
   }
   return result;
+}
+
+std::string
+remove_comment_and_trailing_whitespace(std::string const& s)
+{
+  auto endpos = s.find('#');
+  if (endpos == std::string::npos)
+    endpos = s.size();
+  while (endpos > 0 && s[endpos - 1] == ' ')
+    endpos--;
+
+  return s.substr(0, endpos);
+}
+
+using dimension_t = unsigned long;
+
+dimension_t
+div_round_up(dimension_t a, dimension_t b)
+{
+  return (a + b - 1) / b;
+}
+
+dimension_t
+div_round_close(dimension_t a, dimension_t b)
+{
+  return (a + b / 2) / b;
 }
 
 #endif // STRING_UTILS_HPP

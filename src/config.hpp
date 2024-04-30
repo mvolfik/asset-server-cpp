@@ -8,7 +8,7 @@
 #include <thread>
 #include <vector>
 
-constexpr unsigned percentage_divisor = 100;
+#include "string_utils.hpp"
 
 /**
  * Size specification can be:
@@ -30,8 +30,8 @@ constexpr unsigned percentage_divisor = 100;
  */
 struct size_spec
 {
-  unsigned fixed_value;
-  unsigned decrement;
+  dimension_t fixed_value;
+  dimension_t decrement;
   bool decrement_is_pct;
 
   static size_spec parse(std::string s)
@@ -68,21 +68,21 @@ struct size_spec
     return spec;
   }
 
-  void get_sizes(unsigned original_width, std::set<unsigned>& result) const
+  void get_sizes(dimension_t original_width,
+                 std::set<dimension_t>& result) const
   {
     if (decrement == 0) {
       result.insert(fixed_value);
       return;
     }
 
-    unsigned width = original_width;
+    dimension_t width = original_width;
     while (width >= fixed_value) {
       result.insert(width);
-      unsigned decrement = this->decrement;
+      dimension_t decrement = this->decrement;
 
       if (decrement_is_pct)
-        decrement = (width * decrement + percentage_divisor - 1) /
-                    percentage_divisor; // divide and round up
+        decrement = div_round_up(width * decrement, 100);
 
       if (decrement > width) // avoid underflow
         break;
@@ -95,7 +95,7 @@ unsigned
 parse_bytes(std::string const& s)
 {
   unsigned val = 0;
-  for (int i = 0; i < s.size(); i++) {
+  for (std::size_t i = 0; i < s.size(); i++) {
     if (s[i] < '0' || s[i] > '9') {
       if (i != s.size() - 1)
         throw std::runtime_error("Failed to parse value: " + s);
@@ -138,9 +138,9 @@ struct config
     return thread_pool_size.value_or(std::thread::hardware_concurrency() + 1);
   }
 
-  std::set<unsigned> get_sizes(unsigned original_width)
+  std::set<dimension_t> get_sizes(dimension_t original_width) const
   {
-    std::set<unsigned> result;
+    std::set<dimension_t> result;
     result.insert(original_width);
 
     for (auto const& spec : sizes) {
@@ -161,16 +161,9 @@ struct config
 
     std::string line;
     while (std::getline(file, line)) {
-      // remove comment and any trailing whitespace
-      auto endpos = line.find('#');
-      if (endpos == std::string::npos)
-        endpos = line.size();
-      while (endpos > 0 && line[endpos - 1] == ' ')
-        endpos--;
-
-      if (endpos == 0)
+      line = remove_comment_and_trailing_whitespace(line);
+      if (line.empty())
         continue;
-      line = line.substr(0, endpos);
 
       auto pos = line.find('=');
       if (pos == std::string::npos)

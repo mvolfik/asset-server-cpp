@@ -23,14 +23,17 @@ class resize_executor
 {
 private:
   std::weak_ptr<http_connection> conn;
-  worker_request_data data;
+  worker_task_data data;
+  config const& cfg;
   std::atomic_bool cancelled{ false };
 
 public:
   resize_executor(std::weak_ptr<http_connection> conn,
-                  worker_request_data&& data)
+                  worker_task_data&& data,
+                  config const& cfg)
     : conn(conn)
     , data(std::move(data))
+    , cfg(cfg)
   {
   }
 
@@ -46,11 +49,12 @@ public:
 private:
   friend void resize_executor::perform_work();
 
-  worker_pool_t& pool;
-  config const& cfg;
   boost::asio::ip::tcp::socket socket;
   /** A buffer for performing reads. */
   boost::beast::flat_buffer buffer{ 8192 };
+
+  worker_pool_t& pool;
+  config const& cfg;
 
   boost::beast::http::request_parser<
     boost::beast::http::vector_body<std::uint8_t>>
@@ -70,13 +74,6 @@ private:
    * can start the response.
    */
   std::atomic<pending_jobs_t> pending_jobs{ 0 };
-  /**
-   * May only be written by the first started worker (which reads the image and
-   * generates variant sizes + formats), and may only be read by respond(),
-   * which is called after the last worker finishes. These stages are
-   * synchronized by pending_jobs.
-   */
-  std::optional<processing_result> result;
 
   /**
    * When an error (or timeout) happens, do
@@ -94,6 +91,14 @@ private:
     std::numeric_limits<pending_jobs_t>::max() / 2;
   static constexpr pending_jobs_t PENDING_JOBS_ERROR_SET_VALUE =
     std::numeric_limits<pending_jobs_t>::max();
+
+  /**
+   * May only be written by the first started worker (which reads the image and
+   * generates variant sizes + formats), and may only be read by respond(),
+   * which is called after the last worker finishes. These stages are
+   * synchronized by pending_jobs.
+   */
+  std::optional<image_metadata> result;
 
   std::vector<std::shared_ptr<resize_executor>> my_executors;
 
@@ -114,16 +119,19 @@ private:
       std::cerr
         << "Internal error (bug): called respond(), but no result was set"
         << std::endl;
-      check_and_respond_with_error(processing_error_result{
+      check_and_respond_with_error(error_result{
         "error.internal", boost::beast::http::status::internal_server_error });
       return;
     }
-    result->write_json(boost::beast::ostream(response.body()));
+
+    auto stream = boost::beast::ostream(response.body());
+    result->write_json(stream);
+    stream.flush();
 
     write_response();
   }
 
-  void check_and_respond_with_error(processing_error_result const& error)
+  void check_and_respond_with_error(error_result const& error)
   {
     auto value_before_write =
       pending_jobs.exchange(PENDING_JOBS_ERROR_SET_VALUE);
@@ -140,8 +148,14 @@ private:
     write_response();
   }
 
-  void process_request(boost::beast::error_code read_ec,
-                       std::size_t _bytes_transferred)
+  void start_task(std::shared_ptr<resize_executor> executor)
+  {
+    my_executors.push_back(executor);
+    pending_jobs.fetch_add(1);
+    pool.add_task(executor);
+  }
+
+  void process_request(boost::beast::error_code read_ec)
   {
     auto const& request = request_parser.get();
     response.version(request.version());
@@ -150,13 +164,13 @@ private:
 
     if (read_ec) {
       if (read_ec == boost::beast::http::error::body_limit) {
-        check_and_respond_with_error(processing_error_result{
-          "error.payload_too_large",
-          boost::beast::http::status::payload_too_large });
+        check_and_respond_with_error(
+          error_result{ "error.payload_too_large",
+                        boost::beast::http::status::payload_too_large });
       } else {
         std::cerr << "Error reading request: " << read_ec.message()
                   << std::endl;
-        check_and_respond_with_error(processing_error_result{
+        check_and_respond_with_error(error_result{
           "error.bad_request", boost::beast::http::status::bad_request });
       }
 
@@ -167,46 +181,39 @@ private:
                                     std::string(request.target()));
     if (!url) {
       std::cerr << "Error parsing URL: " << request.target() << std::endl;
-      check_and_respond_with_error(processing_error_result{
+      check_and_respond_with_error(error_result{
         "error.internal", boost::beast::http::status::internal_server_error });
       return;
     }
     if (url->get_pathname() != "/api/upload") {
-      check_and_respond_with_error(processing_error_result{
+      check_and_respond_with_error(error_result{
         "error.not_found", boost::beast::http::status::not_found });
       return;
     }
     if (request.method() != boost::beast::http::verb::post) {
-      check_and_respond_with_error(processing_error_result{
-        "error.method_not_allowed",
-        boost::beast::http::status::method_not_allowed });
+      check_and_respond_with_error(
+        error_result{ "error.method_not_allowed",
+                      boost::beast::http::status::method_not_allowed });
       return;
     }
 
     ada::url_search_params params(url->get_search());
     if (!params.has("filename")) {
-      check_and_respond_with_error(processing_error_result{
+      check_and_respond_with_error(error_result{
         "error.missing_filename", boost::beast::http::status::bad_request });
       return;
     }
 
-    // add the hook to send processing_timeout error if the processing takes too
-    // long then we need to ensure that we write the response data only once.
-    // From this point, there are two places where that can happen: in the
-    // stop_processing_on_deadline hook, or in respond, called by the
-    // executor. Both of these places (and any added in future) need to check
-    // that the response wasn't set yet by the other fibre.
+    // Add the hook to send processing_timeout error.
+    // From now on, we have multiple places that can send a response, so we need
+    // to take care all are synchronized using the mechanism described in
+    // the comments above pending_jobs.
     stop_processing_on_deadline();
 
-    // start image processing in the thread pool; the pool calls
-    // respond when done with the task
-    worker_request_data data{ request.body(),
-                              std::string(params.get("filename").value()) };
-    auto executor =
-      std::make_shared<resize_executor>(weak_from_this(), std::move(data));
-    my_executors.push_back(executor);
-    pending_jobs.fetch_add(1);
-    pool.add_task(executor);
+    load_image_task_data data{ request.body(),
+                               std::string(params.get("filename").value()) };
+    start_task(std::make_shared<resize_executor>(
+      weak_from_this(), worker_task_data{ std::move(data) }, cfg));
   }
 
   void write_response()
@@ -257,9 +264,9 @@ private:
 
       std::cerr << "Timeout: stopping processing" << std::endl;
 
-      self->check_and_respond_with_error(processing_error_result{
-        "error.processing_timed_out",
-        boost::beast::http::status::service_unavailable });
+      self->check_and_respond_with_error(
+        error_result{ "error.processing_timed_out",
+                      boost::beast::http::status::service_unavailable });
     });
   }
 
@@ -286,8 +293,8 @@ public:
       socket,
       buffer,
       request_parser,
-      [self](boost::beast::error_code ec, std::size_t bytes_transferred) {
-        self->process_request(ec, bytes_transferred);
+      [self](boost::beast::error_code ec, std::size_t _bytes_transferred) {
+        self->process_request(ec);
       });
 
     kill_socket_on_deadline();
@@ -297,20 +304,54 @@ public:
 void
 resize_executor::perform_work()
 {
-  auto result = process_data(std::move(data), cancelled);
+  if (cancelled) {
+    std::cerr << "Processing cancelled at task start" << std::endl;
+    return;
+  }
+
+  worker_result_variant worker_result;
+  if (std::holds_alternative<load_image_task_data>(data)) {
+    worker_result =
+      load_image(std::get<load_image_task_data>(std::move(data)), cfg);
+  } else if (std::holds_alternative<resize_to_spec_task_data>(data)) {
+    worker_result =
+      resize_to_spec(std::get<resize_to_spec_task_data>(std::move(data)));
+  } else {
+    std::cerr << "Internal error (bug): unknown worker_task_data variant"
+              << std::endl;
+    worker_result =
+      error_result{ "error.internal",
+                    boost::beast::http::status::internal_server_error };
+  }
+
+  if (cancelled) {
+    std::cerr << "Processing cancelled after task finish" << std::endl;
+    return;
+  }
+
   std::shared_ptr<http_connection> upgraded = conn.lock();
 
   if (upgraded) {
-    if (std::holds_alternative<processing_error_result>(result)) {
+    if (std::holds_alternative<error_result>(worker_result)) {
       // handle error
       upgraded->check_and_respond_with_error(
-        std::get<processing_error_result>(result));
+        std::get<error_result>(worker_result));
     } else {
       // save the result if any, start response if this is the last worker
       // finishing
-      if (std::holds_alternative<processing_result>(result)) {
-        upgraded->result = std::get<processing_result>(result);
-      } // else: result is processing_empty_result, noop
+      if (std::holds_alternative<load_image_result>(worker_result)) {
+        auto result = std::get<load_image_result>(std::move(worker_result));
+        upgraded->result = std::move(result.metadata);
+        for (auto const& spec : upgraded->result->dimensions) {
+          resize_to_spec_task_data data{
+            result.image,
+            spec,
+            *upgraded->result,
+          };
+          upgraded->start_task(std::make_shared<resize_executor>(
+            upgraded, worker_task_data{ std::move(data) }, cfg));
+        }
+      } // else: result is empty_result, noop
 
       auto value_before_write = upgraded->pending_jobs.fetch_sub(1);
       if (value_before_write == 1)
