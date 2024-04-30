@@ -133,6 +133,9 @@ struct config
 
   std::vector<size_spec> sizes;
 
+  std::unordered_map<std::string, std::vector<std::string>> formats;
+  static constexpr const char* ALL_FORMATS_KEY = "*";
+
   unsigned get_thread_pool_size() const
   {
     return thread_pool_size.value_or(std::thread::hardware_concurrency() + 1);
@@ -146,6 +149,20 @@ struct config
     for (auto const& spec : sizes) {
       spec.get_sizes(original_width, result);
     }
+    return result;
+  }
+
+  std::vector<std::string> get_formats(std::string const& format) const
+  {
+    std::vector<std::string> result;
+    auto it = formats.find(format);
+    if (it != formats.end())
+      result = it->second;
+
+    it = formats.find(ALL_FORMATS_KEY);
+    if (it != formats.end())
+      result.insert(result.end(), it->second.begin(), it->second.end());
+
     return result;
   }
 
@@ -191,6 +208,22 @@ struct config
               size_spec::parse(value.substr(start, end - start)));
             start = end + 1;
           }
+        } else if (key.length() > 8 && key.compare(0, 8, "formats.") == 0) {
+          auto format = key.substr(8);
+          std::vector<std::string> formats;
+          std::string::size_type start = 0;
+          while (start < value.size()) {
+            auto end = value.find(',', start);
+            if (end == std::string::npos)
+              end = value.size();
+            formats.push_back(value.substr(start, end - start));
+            start = end + 1;
+          }
+          if (formats.empty())
+            throw std::runtime_error("No formats specified for key: " + key);
+          auto result = cfg.formats.emplace(format, std::move(formats));
+          if (!result.second)
+            throw std::runtime_error("Duplicate format key: " + key);
         } else {
           throw std::runtime_error("Unknown config key");
         }
@@ -202,6 +235,8 @@ struct config
 
     if (cfg.sizes.empty())
       throw std::runtime_error("No sizes specified");
+    if (cfg.formats.empty())
+      throw std::runtime_error("No formats specified");
 
     if (cfg.socket_kill_timeout_secs <= cfg.processing_timeout_secs)
       throw std::runtime_error("socket_kill_timeout_secs must be greater than "

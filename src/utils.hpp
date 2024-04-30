@@ -5,15 +5,6 @@
 #include <string>
 
 std::string
-remove_suffix(std::string const& s)
-{
-  auto pos = s.find_last_of('.');
-  if (pos == std::string_view::npos || pos < s.length() - 5)
-    return s;
-  return s.substr(0, pos);
-}
-
-std::string
 sanitize_filename(std::string_view const& s)
 {
   std::string result;

@@ -115,8 +115,13 @@ load_image(load_image_task_data const& request, config const& config)
                          boost::beast::http::status::bad_request };
   }
 
+  std::string format = image.magick();
+  // to lowercase
+  std::transform(format.begin(), format.end(), format.begin(), ::tolower);
+  auto formats = config.get_formats(format);
+
   auto original_size = image.size();
-  auto filename = sanitize_filename(remove_suffix(request.filename));
+  auto filename = sanitize_filename(request.filename);
 
   std::set<dimension_t> widths = config.get_sizes(original_size.width());
   std::vector<dimensions_spec> dimensions(widths.size());
@@ -131,13 +136,12 @@ load_image(load_image_task_data const& request, config const& config)
 
   return load_image_result{
     .metadata =
-      image_metadata{
-        .filename = filename,
-        .original_dimensions = { original_size.width(),
-                                 original_size.height() },
-        .original_format = "jpg",
-        .dimensions = dimensions,
-        .formats = { "jpg", "webp" } }, // TODO: make the formats configurable
+      image_metadata{ .filename = filename,
+                      .original_dimensions = { original_size.width(),
+                                               original_size.height() },
+                      .original_format = "jpg",
+                      .dimensions = dimensions,
+                      .formats = formats },
     .image = std::move(image)
   };
 }
@@ -153,8 +157,10 @@ resize_to_spec(resize_to_spec_task_data const& request)
                  std::to_string(request.spec.width) + "x" +
                  std::to_string(request.spec.height);
   try {
-    image.write(fn_base + ".jpg");
-    image.write(fn_base + ".webp");
+    for (auto const& format : request.metadata.formats) {
+      Magick::Image imagecopy = image;
+      imagecopy.write(fn_base + "." + format);
+    }
   } catch (std::exception const& e) {
     std::cerr << "Error writing file: " << e.what() << std::endl;
     return error_result{ "error.error_writing_file",

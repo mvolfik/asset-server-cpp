@@ -315,7 +315,7 @@ resize_executor::perform_work()
       load_image(std::get<load_image_task_data>(std::move(data)), cfg);
   } else if (std::holds_alternative<resize_to_spec_task_data>(data)) {
     worker_result =
-      resize_to_spec(std::get<resize_to_spec_task_data>(std::move(data)));
+      resize_to_spec(std::get<resize_to_spec_task_data>(data));
   } else {
     std::cerr << "Internal error (bug): unknown worker_task_data variant"
               << std::endl;
