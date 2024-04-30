@@ -136,6 +136,8 @@ struct config
   std::unordered_map<std::string, std::vector<std::string>> formats;
   static constexpr const char* ALL_FORMATS_KEY = "*";
 
+  std::string auth_header_val;
+
   unsigned get_thread_pool_size() const
   {
     return thread_pool_size.value_or(std::thread::hardware_concurrency() + 1);
@@ -198,6 +200,8 @@ struct config
           cfg.thread_pool_size = std::stoi(value);
         } else if (key == "upload_limit") {
           cfg.upload_limit_bytes = parse_bytes(value);
+        } else if (key == "auth_token") {
+          cfg.auth_header_val = "Bearer " + value;
         } else if (key == "sizes") {
           std::string::size_type start = 0;
           while (start < value.size()) {
@@ -245,6 +249,11 @@ struct config
     if (cfg.processing_timeout_secs == 0)
       throw std::runtime_error(
         "processing_timeout_secs must be greater than 0");
+
+    if (cfg.auth_header_val.empty())
+      std::cerr << "Warning: no auth_token specified, server will be open for "
+                   "uploads to anyone"
+                << std::endl;
 
     return cfg;
   }

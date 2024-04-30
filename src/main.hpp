@@ -14,8 +14,8 @@
 
 #include "config.hpp"
 #include "image_processing.hpp"
-#include "utils.hpp"
 #include "thread_pool.hpp"
+#include "utils.hpp"
 
 class http_connection;
 
@@ -155,6 +155,15 @@ private:
     pool.add_task(executor);
   }
 
+  template<typename T>
+  bool is_authorized(boost::beast::http::request<T> const& request)
+  {
+    if (cfg.auth_header_val.empty())
+      return true;
+    auto token = request[boost::beast::http::field::authorization];
+    return (token == cfg.auth_header_val);
+  }
+
   void process_request(boost::beast::error_code read_ec)
   {
     auto const& request = request_parser.get();
@@ -201,6 +210,12 @@ private:
     if (!params.has("filename")) {
       check_and_respond_with_error(error_result{
         "error.missing_filename", boost::beast::http::status::bad_request });
+      return;
+    }
+
+    if (!is_authorized(request)) {
+      check_and_respond_with_error(error_result{
+        "error.unauthorized", boost::beast::http::status::unauthorized });
       return;
     }
 
@@ -314,8 +329,7 @@ resize_executor::perform_work()
     worker_result =
       load_image(std::get<load_image_task_data>(std::move(data)), cfg);
   } else if (std::holds_alternative<resize_to_spec_task_data>(data)) {
-    worker_result =
-      resize_to_spec(std::get<resize_to_spec_task_data>(data));
+    worker_result = resize_to_spec(std::get<resize_to_spec_task_data>(data));
   } else {
     std::cerr << "Internal error (bug): unknown worker_task_data variant"
               << std::endl;
