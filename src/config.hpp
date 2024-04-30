@@ -161,8 +161,16 @@ struct config
 
     std::string line;
     while (std::getline(file, line)) {
-      if (line.empty() || line[0] == '#')
+      // remove comment and any trailing whitespace
+      auto endpos = line.find('#');
+      if (endpos == std::string::npos)
+        endpos = line.size();
+      while (endpos > 0 && line[endpos - 1] == ' ')
+        endpos--;
+
+      if (endpos == 0)
         continue;
+      line = line.substr(0, endpos);
 
       auto pos = line.find('=');
       if (pos == std::string::npos)
