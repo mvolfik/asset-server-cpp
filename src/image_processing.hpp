@@ -10,7 +10,7 @@
 #include <Magick++.h>
 
 #include "config.hpp"
-#include "string_utils.hpp"
+#include "utils.hpp"
 
 struct dimensions_spec
 {

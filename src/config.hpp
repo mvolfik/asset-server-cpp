@@ -8,7 +8,7 @@
 #include <thread>
 #include <vector>
 
-#include "string_utils.hpp"
+#include "utils.hpp"
 
 /**
  * Size specification can be:

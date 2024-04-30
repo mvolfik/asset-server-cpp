@@ -1,5 +1,5 @@
-#ifndef STRING_UTILS_HPP
-#define STRING_UTILS_HPP
+#ifndef UTILS_HPP
+#define UTILS_HPP
 
 #include <regex>
 #include <string>
@@ -52,4 +52,4 @@ div_round_close(dimension_t a, dimension_t b)
   return (a + b / 2) / b;
 }
 
-#endif // STRING_UTILS_HPP
+#endif // UTILS_HPP

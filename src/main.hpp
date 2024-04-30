@@ -14,7 +14,7 @@
 
 #include "config.hpp"
 #include "image_processing.hpp"
-#include "string_utils.hpp"
+#include "utils.hpp"
 #include "thread_pool.hpp"
 
 class http_connection;
