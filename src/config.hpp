@@ -141,6 +141,9 @@ struct config
 
   std::string auth_header_val;
 
+  std::string data_dir;
+  std::string temp_dir;
+
   unsigned get_thread_pool_size() const
   {
     return thread_pool_size.value_or(std::thread::hardware_concurrency() + 1);
@@ -209,6 +212,10 @@ struct config
           cfg.upload_limit_bytes = parse_bytes(value);
         } else if (key == "auth_token") {
           cfg.auth_header_val = "Bearer " + value;
+        } else if (key == "data_dir") {
+          cfg.data_dir = value;
+        } else if (key == "temp_dir") {
+          cfg.temp_dir = value;
         } else if (key == "sizes") {
           std::string::size_type start = 0;
           while (start < value.size()) {
@@ -248,6 +255,11 @@ struct config
       throw std::runtime_error("No sizes specified");
     if (cfg.formats.empty())
       throw std::runtime_error("No formats specified");
+
+    if (cfg.data_dir.empty())
+      throw std::runtime_error("data_dir not specified");
+    if (cfg.temp_dir.empty())
+      throw std::runtime_error("temp_dir not specified");
 
     if (cfg.socket_kill_timeout_secs <= cfg.processing_timeout_secs)
       throw std::runtime_error("socket_kill_timeout_secs must be greater than "

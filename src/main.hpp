@@ -2,6 +2,7 @@
 #define MAIN_HPP
 
 #include <atomic>
+#include <filesystem>
 #include <iostream>
 #include <thread>
 
@@ -44,8 +45,6 @@ public:
 class http_connection : public std::enable_shared_from_this<http_connection>
 {
 public:
-  using worker_pool_t = thread_pool<resize_executor>;
-
 private:
   friend void resize_executor::perform_work();
 
@@ -53,7 +52,7 @@ private:
   /** A buffer for performing reads. */
   boost::beast::flat_buffer buffer{ 8192 };
 
-  worker_pool_t& pool;
+  thread_pool<resize_executor>& pool;
   config const& cfg;
 
   boost::beast::http::request_parser<
@@ -287,7 +286,7 @@ private:
 
 public:
   http_connection(boost::asio::ip::tcp::socket socket,
-                  worker_pool_t& pool,
+                  thread_pool<resize_executor>& pool,
                   config const& cfg)
     : socket(std::move(socket))
     , pool(pool)

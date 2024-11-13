@@ -24,5 +24,5 @@ Testy plánuji psát typu end-to-end: server spustím s nějakou konfigurací fo
 
 Použité knihovny:
 
-- ImageMagick (Magick++) pro konverzi obrázků mezi velikostmi a formáty
+- [libvips](https://github.com/libvips/libvips) pro konverzi obrázků mezi velikostmi a formáty
 - HTTP server: [Boost.Beast](https://github.com/boostorg/beast)

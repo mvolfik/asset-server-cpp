@@ -12,7 +12,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(ImageMagick REQUIRED COMPONENTS Magick++)
 
-find_package(Boost REQUIRED)
+include(FetchContent)
+FetchContent_Declare(
+    Boost
+    GIT_REPOSITORY https://
+)
 
 # MAIN
 set(MAIN_EXE "asset-server")
