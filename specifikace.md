@@ -7,14 +7,12 @@ V postupu výše je navíc možná race condition: pokud paralelně dostaneme dv
 
 Dočasnou složku server používá proto, aby v každou chvíli byly všechny obrázky v datové složce v konzistentním stavu, a jiný server, který z ní bude číst, si tak nemohl přečíst a zacachovat nekompletní soubor.
 
-Vedle hlavního, serverového režimu by výsledný program měl poskytovat i přepínač, který spustí kontrolu, zda všechny uložené soubory mají varianty odpovídající aktuálnímu nastavení. Dalším přepínačem by toto mělo být možné opravit, a to ve dvou variantách - s mazáním existujících variant navíc, a s jejich zachováním.
-
 Chování serveru bude možné přizpůsobit konfiguračním souborem (jehož parsování je také samozřejmě součást zápočtového projektu), který bude poskytovat přinejmenším následující možnosti:
 
 - Cesty adresářů pro nahrané obrázky a pro dočasná data (měly by být na stejném filesystému, abychom mohli provádět atomické přesuny).
 - Velikosti, do kterých se budou obrázky konvertovat. Tyto by mělo být možné specifikovat v procentech oproti původní velikosti i absolutní hodnotou v pixelech. Zde by bylo fajn mít nějakou obecně určenou posloupnost: např. _původní velikost, a pak opakovaně o 200px (nebo třeba 10 %) míň, až po minimální velikost 150px_.
 - Souborové formáty, do kterých se budou jednotlivé varianty konvertovat.
-  - Tato konfigurace by měla umožnit nějaké dynamické chování podle formátu původního souboru: např. vždy chci vygenerovat webp a avif, pro formáty jpg, png a gif chci zachovat i původní, apng chci konvertovat do gifu, a ostatní chci konvertovat do jpg.
+  - Tato konfigurace by měla umožnit nějaké dynamické chování podle formátu původního souboru: např. vždy chci vygenerovat webp a jpg, a pokud je zdrojový obrázek v png nebo gif, tak chci zachovat i ten.
 - Chování HTTP serveru: adresu a port, na které poslouchá, a nastavení CORS (tzn. ze kterých domén bude možné na server nahrávat přímo v prohlížeči).
 - Autorizační token, který musí být obsažen v požadavcích. Toto chování by ale také mělo být možné vypnout.
 
@@ -27,4 +25,4 @@ Testy plánuji psát typu end-to-end: server spustím s nějakou konfigurací fo
 Použité knihovny:
 
 - ImageMagick (Magick++) pro konverzi obrázků mezi velikostmi a formáty
-- HTTP server: [Mongoose](https://github.com/cesanta/mongoose/blob/master/examples/file-upload-html-form/main.c) miniframework nebo [Boost.Beast](https://github.com/boostorg/beast) (raději zde uvádím dvě varianty, ani s jedním nemám zkušenost, ale alespoň jeden z nich by snad mohl být dostatečně jednoduchý na použití)
+- HTTP server: [Boost.Beast](https://github.com/boostorg/beast)

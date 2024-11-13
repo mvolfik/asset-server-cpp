@@ -2,21 +2,54 @@
 
 Specifikace: [specifikace.md](specifikace.md)
 
-para IMPL:
+Implementation of parallelism, to avoid processing same image twice:
 
-podiva se jestli existuje. kdyz jo, hotovo
-lockne mutex hashmap<hash, vec<notifier>>
-jestli existuje entry, vytvori si notifier, prida ho do vectoru. unlockne a spi, po probuzeni ma hotovo
-vytvori entry []
-unlockne
-zpracuje request v tmpdir
-rename do target lokace
-lockne
-notify vsechny notifiery
-rm entry
-unlock
+- calculate hash of received image data
+- check if image with this hash is already saved; if yes, done
+- lock hashmap<hash, vec<notifier>>
+- if entry for given hash exists:
+  - register a notifier
+  - unlock hashmap
+  - sleep on notifier
+  - after wakeup, the file is ready, done
+- else:
+  - create entry with empty vec
+  - unlock hashmap
+  - again, check if image with this hash is already saved, if no:
+    - process the image in tmpdir
+    - when done, atomically rename the built folder to target location
+  - (regardless of whether we actually did the processing, or if we noticed that the result already exists:)
+  - lock hashmap again
+  - notify all registered notifiers
+  - remove the entry
+  - unlock
+  - done
 
-Tech demo as of right now.
+The existence check after creating the hashmap entry **is necessary**, in a sense, the first existence check is just an optimization to decrease lock contention on the hashmap. Here's an example scenario, where the second check saves us from doing the same thing twice:
+
+| request 1 | request 2 | request 3 |
+|-----------|-----------|-----------|
+| exist check (false) |||
+| lock |||
+| create entry with empty list of notifiers |||
+| unlock |||
+| exist check (false) | exist check (false) | exist check (false) |
+| process image, rename to target folder | ... | ... |
+| lock | ... | ... |
+| notify registered notifiers and remove entry | ... | ... |
+| unlock | ... | ... |
+| \<done> | lock | ... |
+|| create entry with empty list of notifiers | ... |
+|| unlock | ... |
+||| lock |
+||| entry exists -> register notifier |
+||| unlock and sleep |
+|| exist check (true) ||
+|| lock ||
+|| notify registered notifiers and remove entry | (wakes up) |
+|| unlock ||
+|| \<done> | \<done> |
+
 
 Build and run on Debian:
 
@@ -31,13 +64,13 @@ make -j
 
 Repository also contains working two Dockerfiles, using Debian and Alpine as base images.
 
-Windows: untested. Magick says it works under Cygwin.
+Windows: untested so far. Both Magick and Boost say Windows is supported, but I have no idea about the Cmake integration will work.
 
-## Testing
+<!-- ## Testing
 
 `curl -i 'http://0.0.0.0:8000/api/upload?filename=any_filename_that_you_choose_suffix_doesnt_matter.png' -X POST --data-binary @$HOME/Pictures/image.jpg`
 
----
+--- -->
 
 ## License
 
@@ -47,3 +80,5 @@ Copyright (c) 2017 Christopher M. Kohlhoff (chris at kohlhoff dot com)
 Copyright (c) 2024 Matěj Volf
 
 Distributed under the Boost Software License, Version 1.0. (See accompanying file LICENSE.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
+
+The files `vendor/ada.*` are of the ada-url project, see https://github.com/ada-url/ada for licensing information.
