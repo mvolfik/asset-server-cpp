@@ -5,6 +5,54 @@ Cílem projektu je vytvořit webový server, na který bude přes HTTP možné n
 Zamýšlené využití je jako komponenta redakčního systému pro webové stránky: autor obsahu vybere soubor, který se nahraje na tento server.
 Redakční systém tak získá k dispozici responzivní varianty, které může požději při prezentaci obsahu návštěvníkovi využít pro zobrazení obrázku na menších zařízeních ve vhodném rozlišení. Tím se zrychlí načítání stránek a sníží množství přenesených dat.
 
+Konkrétní příklad:
+
+1. Server je nakonfigurovaný na generování variant 300px a 800px na šířku + originál, vše ve formátech WebP a JPG.
+2. Uživatel nahraje soubor `obrazek.png` o rozměrech 1200px x 1500px. Hash obrázku je `0123456789abcdef`
+3. Server uloží následující strukturu souborů:
+
+```raw
+data/
+  0123456789abcdef/
+    obrazek.png
+    1200x1500/
+      obrazek.webp
+      obrazek.jpg
+    300x375/
+      obrazek.webp
+      obrazek.jpg
+    800x1000/
+      obrazek.webp
+      obrazek.jpg
+```
+
+4. Server pošle následující odpověď:
+
+```json
+{
+  "name": "obrazek",
+  "hash": "0123456789abcdef",
+  "original": "obrazek.png",
+  "variants": [
+    {
+      "width": 1200,
+      "height": 1500,
+      "formats": ["webp", "jpg"]
+    },
+    {
+      "width": 300,
+      "height": 375,
+      "formats": ["webp", "jpg"]
+    },
+    {
+      "width": 800,
+      "height": 1000,
+      "formats": ["webp", "jpg"]
+    }
+  ]
+}
+```
+
 ### Přibližný postup zpracování požadavku
 
 Serveru na vystavený HTTP endpoint přijde požadavek. Z dat si nejprve spočítá hash, aby zjistil, zda nejde o již existující soubor. Pokud ne, vytvoří si složku v cestě pro dočasné soubory, a zde originální soubor uloží. Poté vygeneruje responzivní varianty, jeden soubor pro každou kombinaci souborového formátu a velikosti (dle konfigurace). Nakonec celou složku přesune na cílovou cestu, a odpoví klientovi s informacemi o všech vygenerovaných variantách a cestě, do které byl soubor uložen.
