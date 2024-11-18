@@ -6,6 +6,7 @@
 #include <set>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #include "utils.hpp"
@@ -34,40 +35,48 @@ struct size_spec
   dimension_t decrement;
   bool decrement_is_pct;
 
-  static size_spec parse(std::string s)
+  /**
+   * Parse a size spec from a string.
+   */
+  static size_spec parse(std::string_view const& s)
   {
     size_spec spec;
     auto colon_pos = s.find(':');
     if (colon_pos == std::string::npos) {
-      spec.fixed_value = std::stoi(s);
+      spec.fixed_value = string_view_to_int(s);
       spec.decrement = 0;
       spec.decrement_is_pct = false;
     } else {
-      spec.fixed_value = std::stoi(s.substr(0, colon_pos));
+      spec.fixed_value = string_view_to_int(s.substr(0, colon_pos));
       auto decrement_str = s.substr(colon_pos + 1);
       if (decrement_str.back() == '%') {
         spec.decrement_is_pct = true;
-        decrement_str.pop_back();
+        decrement_str = decrement_str.substr(0, decrement_str.size() - 1);
       } else {
         auto back = decrement_str.back();
         if (back != 'x' && --back != 'p')
           throw std::runtime_error(
-            "Invalid size spec, expected 'px' or '%' after number: " + s);
+            "Invalid size spec, expected 'px' or '%' after number: " +
+            std::string(s));
 
         spec.decrement_is_pct = false;
-        decrement_str.pop_back();
-        decrement_str.pop_back();
+        decrement_str = decrement_str.substr(0, decrement_str.size() - 2);
       }
-      spec.decrement = std::stoi(decrement_str);
+      spec.decrement = string_view_to_int(decrement_str);
       if (spec.decrement_is_pct && spec.decrement >= 100)
         throw std::runtime_error(
-          "Percentual decrement must be smaller than 100: " + s);
+          "Percentual decrement must be smaller than 100: " + std::string(s));
       if (spec.decrement == 0)
-        throw std::runtime_error("Decrement must be greater than 0: " + s);
+        throw std::runtime_error("Decrement must be greater than 0: " +
+                                 std::string(s));
     }
     return spec;
   }
 
+  /**
+   * Generate all sizes that this size spec means for an image with a concrete
+   * width, and add them to the result set.
+   */
   void get_sizes(dimension_t original_width,
                  std::set<dimension_t>& result) const
   {
@@ -91,16 +100,51 @@ struct size_spec
   }
 };
 
+struct size_specs
+{
+  std::vector<size_spec> specs;
+
+  static size_specs parse(std::string_view const& s)
+  {
+    size_specs result;
+    std::string::size_type start = 0;
+    while (start < s.size()) {
+      auto end = s.find(',', start);
+      if (end == std::string::npos)
+        end = s.size();
+      result.specs.push_back(size_spec::parse(s.substr(start, end - start)));
+      start = end + 1;
+    }
+    return result;
+  }
+
+  std::set<dimension_t> get_sizes(dimension_t original_width) const
+  {
+    std::set<dimension_t> result;
+
+    for (auto const& spec : specs) {
+      spec.get_sizes(original_width, result);
+    }
+    return result;
+  }
+};
+
+/**
+ * Parse a (byte) value from a number with an optional suffix (k, M, G).
+ * Suffixes are interpreted as powers of 1024.
+ */
 unsigned
-parse_bytes(std::string const& s)
+parse_bytes(std::string_view const& s)
 {
   unsigned val = 0;
   for (std::size_t i = 0; i < s.size(); i++) {
     if (s[i] < '0' || s[i] > '9') {
       if (i != s.size() - 1)
-        throw std::runtime_error("Failed to parse value: " + s);
+        throw std::runtime_error("Failed to parse value: " + std::string(s));
 
       switch (s[i]) {
+        case 'B':
+          break;
         case 'k':
         case 'K':
           val *= 1024;
@@ -112,13 +156,14 @@ parse_bytes(std::string const& s)
           val *= 1024 * 1024 * 1024;
           break;
         default:
-          throw std::runtime_error("Invalid byte value suffix: " + s);
+          throw std::runtime_error("Invalid byte value suffix: " +
+                                   std::string(s));
       }
       return val;
     }
     val = val * 10 + (s[i] - '0');
   }
-  throw std::runtime_error("Missing byte value suffix: " + s);
+  throw std::runtime_error("Missing byte value suffix (use 'B' to mark individual bytes): " + std::string(s));
   return val;
 }
 
@@ -134,7 +179,7 @@ struct config
 
   unsigned upload_limit_bytes = 20 * 1024 * 1024;
 
-  std::vector<size_spec> sizes;
+  size_specs sizes;
 
   std::unordered_map<std::string, std::vector<std::string>> formats;
   static constexpr const char* ALL_FORMATS_KEY = "*";
@@ -151,13 +196,7 @@ struct config
 
   std::set<dimension_t> get_sizes(dimension_t original_width) const
   {
-    std::set<dimension_t> result;
-    result.insert(original_width);
-
-    for (auto const& spec : sizes) {
-      spec.get_sizes(original_width, result);
-    }
-    return result;
+    return sizes.get_sizes(original_width);
   }
 
   std::vector<std::string> get_formats(std::string const& format) const
@@ -184,9 +223,9 @@ struct config
       throw std::runtime_error("Could not open config file '" +
                                std::string(filename) + "'");
 
-    std::string line;
-    while (std::getline(file, line)) {
-      line = remove_comment_and_trailing_whitespace(line);
+    std::string buf;
+    while (std::getline(file, buf)) {
+      auto line = remove_comment_and_trailing_whitespace(buf);
       if (line.empty())
         continue;
 
@@ -201,31 +240,23 @@ struct config
         if (key == "listen_host") {
           cfg.listen_host = value;
         } else if (key == "listen_port") {
-          cfg.listen_port = std::stoi(value);
+          cfg.listen_port = string_view_to_int(value);
         } else if (key == "processing_timeout_secs") {
-          cfg.processing_timeout_secs = std::stoi(value);
+          cfg.processing_timeout_secs = string_view_to_int(value);
         } else if (key == "socket_kill_timeout_secs") {
-          cfg.socket_kill_timeout_secs = std::stoi(value);
+          cfg.socket_kill_timeout_secs = string_view_to_int(value);
         } else if (key == "thread_pool_size") {
-          cfg.thread_pool_size = std::stoi(value);
+          cfg.thread_pool_size = string_view_to_int(value);
         } else if (key == "upload_limit") {
           cfg.upload_limit_bytes = parse_bytes(value);
         } else if (key == "auth_token") {
-          cfg.auth_header_val = "Bearer " + value;
+          cfg.auth_header_val = "Bearer " + std::string(value);
         } else if (key == "data_dir") {
           cfg.data_dir = value;
         } else if (key == "temp_dir") {
           cfg.temp_dir = value;
         } else if (key == "sizes") {
-          std::string::size_type start = 0;
-          while (start < value.size()) {
-            auto end = value.find(',', start);
-            if (end == std::string::npos)
-              end = value.size();
-            cfg.sizes.push_back(
-              size_spec::parse(value.substr(start, end - start)));
-            start = end + 1;
-          }
+          cfg.sizes = size_specs::parse(value);
         } else if (key.length() > 8 && key.compare(0, 8, "formats.") == 0) {
           auto format = key.substr(8);
           std::vector<std::string> formats;
@@ -234,24 +265,26 @@ struct config
             auto end = value.find(',', start);
             if (end == std::string::npos)
               end = value.size();
-            formats.push_back(value.substr(start, end - start));
+            formats.push_back(std::string(value.substr(start, end - start)));
             start = end + 1;
           }
           if (formats.empty())
-            throw std::runtime_error("No formats specified for key: " + key);
+            throw std::runtime_error("No formats specified for key: " +
+                                     std::string(key));
           auto result = cfg.formats.emplace(format, std::move(formats));
           if (!result.second)
-            throw std::runtime_error("Duplicate format key: " + key);
+            throw std::runtime_error("Duplicate format key: " +
+                                     std::string(key));
         } else {
           throw std::runtime_error("Unknown config key");
         }
       } catch (std::exception const& e) {
-        throw std::runtime_error("Error parsing config key '" + key +
-                                 "': " + e.what());
+        throw std::runtime_error("Error parsing config key '" +
+                                 std::string(key) + "': " + e.what());
       }
     }
 
-    if (cfg.sizes.empty())
+    if (cfg.sizes.specs.empty())
       throw std::runtime_error("No sizes specified");
     if (cfg.formats.empty())
       throw std::runtime_error("No formats specified");

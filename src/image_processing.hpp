@@ -7,8 +7,6 @@
 
 #include <boost/beast/core/span.hpp>
 
-#include <Magick++.h>
-
 #include "config.hpp"
 #include "utils.hpp"
 
@@ -139,7 +137,7 @@ load_image(load_image_task_data const& request, config const& config)
       image_metadata{ .filename = filename,
                       .original_dimensions = { original_size.width(),
                                                original_size.height() },
-                      .original_format = "jpg",
+                      .original_format = "jpeg",
                       .dimensions = dimensions,
                       .formats = formats },
     .image = std::move(image)

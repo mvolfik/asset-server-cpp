@@ -1,6 +1,6 @@
 FROM alpine:3 as builder
 
-RUN apk add --no-cache imagemagick-dev imagemagick-jpeg imagemagick-webp boost-dev cmake g++ make
+RUN apk add --no-cache vips-dev boost-dev cmake g++ make
 
 
 
@@ -14,8 +14,7 @@ RUN cmake -DCMAKE_BUILD_TYPE=Release .. && make -j
 
 FROM alpine:3
 
-RUN apk add --no-cache imagemagick-c++
-# imagemagick-jpeg imagemagick-webp?
+RUN apk add --no-cache vips
 
 
 WORKDIR /app

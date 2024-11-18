@@ -7,7 +7,7 @@ Redakční systém tak získá k dispozici responzivní varianty, které může 
 
 Konkrétní příklad:
 
-1. Server je nakonfigurovaný na generování variant 300px a 800px na šířku + originál, vše ve formátech WebP a JPG.
+1. Server je nakonfigurovaný na generování variant 300px a 800px na šířku + originál, vše ve formátech WebP a JPEG.
 2. Uživatel nahraje soubor `obrazek.png` o rozměrech 1200px x 1500px. Hash obrázku je `0123456789abcdef`
 3. Server uloží následující strukturu souborů:
 
@@ -17,37 +17,37 @@ data/
     obrazek.png
     1200x1500/
       obrazek.webp
-      obrazek.jpg
+      obrazek.jpeg
     300x375/
       obrazek.webp
-      obrazek.jpg
+      obrazek.jpeg
     800x1000/
       obrazek.webp
-      obrazek.jpg
+      obrazek.jpeg
 ```
 
 4. Server pošle následující odpověď:
 
 ```json
 {
-  "name": "obrazek",
+  "filename": "obrazek",
   "hash": "0123456789abcdef",
-  "original": "obrazek.png",
+  "original": "png",
   "variants": [
     {
       "width": 1200,
       "height": 1500,
-      "formats": ["webp", "jpg"]
+      "formats": ["webp", "jpeg"]
     },
     {
       "width": 300,
       "height": 375,
-      "formats": ["webp", "jpg"]
+      "formats": ["webp", "jpeg"]
     },
     {
       "width": 800,
       "height": 1000,
-      "formats": ["webp", "jpg"]
+      "formats": ["webp", "jpeg"]
     }
   ]
 }
@@ -68,7 +68,7 @@ Chování serveru bude možné přizpůsobit konfiguračním souborem (jehož pa
 - Cesty adresářů pro nahrané obrázky a pro dočasná data (měly by být na stejném filesystému, abychom mohli provádět atomické přesuny).
 - Velikosti, do kterých se budou obrázky konvertovat. Tyto by mělo být možné specifikovat v procentech oproti původní velikosti i absolutní hodnotou v pixelech. Zde by bylo fajn mít nějakou obecně určenou posloupnost: např. _původní velikost, a pak opakovaně o 200px (nebo třeba 10 %) míň, až po minimální velikost 150px_.
 - Souborové formáty, do kterých se budou jednotlivé varianty konvertovat.
-  - Tato konfigurace by měla umožnit nějaké dynamické chování podle formátu původního souboru: např. vždy chci vygenerovat webp a jpg, a pokud je zdrojový obrázek v png nebo gif, tak chci zachovat i ten.
+  - Tato konfigurace by měla umožnit nějaké dynamické chování podle formátu původního souboru: např. vždy chci vygenerovat webp a jpeg, a pokud je zdrojový obrázek v png nebo gif, tak chci zachovat i ten.
 - Chování HTTP serveru: adresu a port, na které poslouchá, a nastavení CORS (tzn. ze kterých domén bude možné na server nahrávat přímo v prohlížeči).
 - Autorizační token, který musí být obsažen v požadavcích. Toto chování by ale také mělo být možné vypnout.
 

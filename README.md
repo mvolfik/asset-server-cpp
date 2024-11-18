@@ -54,7 +54,7 @@ The existence check after creating the hashmap entry **is necessary**, in a sens
 Build and run on Debian:
 
 ```sh
-apt install libmagick++-dev libboost-dev cmake g++ make --no-install-recommends -y
+apt install libvips-dev libboost-dev cmake g++ make --no-install-recommends -y
 mkdir build
 cd build
 cmake ..
@@ -64,11 +64,11 @@ make -j
 
 Repository also contains working two Dockerfiles, using Debian and Alpine as base images.
 
-Windows: untested so far. Both Magick and Boost say Windows is supported, but I have no idea about the Cmake integration will work.
+Windows: untested so far. libvips C++ bindings will likely need to be recompiled from source, I am deferring this for later.
 
 <!-- ## Testing
 
-`curl -i 'http://0.0.0.0:8000/api/upload?filename=any_filename_that_you_choose_suffix_doesnt_matter.png' -X POST --data-binary @$HOME/Pictures/image.jpg`
+`curl -i 'http://0.0.0.0:8000/api/upload?filename=any_filename_that_you_choose_suffix_doesnt_matter.png' -X POST --data-binary @$HOME/Pictures/image.jpeg`
 
 --- -->
 

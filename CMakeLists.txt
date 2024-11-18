@@ -10,22 +10,23 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(ImageMagick REQUIRED COMPONENTS Magick++)
+find_package(Boost REQUIRED)
 
-include(FetchContent)
-FetchContent_Declare(
-    Boost
-    GIT_REPOSITORY https://
-)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LIBVIPS REQUIRED IMPORTED_TARGET vips-cpp)
 
 # MAIN
 set(MAIN_EXE "asset-server")
 add_executable(${MAIN_EXE} "src/main.cpp" "vendor/ada.cpp")
 target_compile_options(${MAIN_EXE} PRIVATE "-Wall" "-Wextra")
-target_compile_definitions(${MAIN_EXE} PRIVATE "MAGICKCORE_HDRI_ENABLE=0" "MAGICKCORE_QUANTUM_DEPTH=16")
-
-target_include_directories(${MAIN_EXE} PRIVATE ${ImageMagick_INCLUDE_DIRS})
-target_link_libraries(${MAIN_EXE} PRIVATE ${ImageMagick_LIBRARIES})
 
 target_include_directories(${MAIN_EXE} PRIVATE ${Boost_INCLUDE_DIRS})
 target_link_libraries(${MAIN_EXE} PRIVATE ${Boost_LIBRARIES})
+
+target_include_directories(${MAIN_EXE} PRIVATE PkgConfig::LIBVIPS)
+target_link_libraries(${MAIN_EXE} PRIVATE PkgConfig::LIBVIPS)
+
+# TESTS
+set(TEST_EXE "test")
+add_executable(${TEST_EXE} "test/test.cpp" "vendor/ada.cpp")
+target_compile_options(${TEST_EXE} PRIVATE "-Wall" "-Wextra")

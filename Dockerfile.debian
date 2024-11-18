@@ -1,7 +1,7 @@
 FROM debian:bookworm as builder
 
 RUN apt update \
- && apt install libmagick++-dev libboost-dev cmake g++ make --no-install-recommends -y \
+ && apt install libvips-dev libboost-dev cmake g++ make --no-install-recommends -y \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -15,7 +15,7 @@ RUN cmake -DCMAKE_BUILD_TYPE=Release .. && make -j
 FROM debian:bookworm
 
 RUN apt update \
- && apt install libmagick++-6.q16-8 --no-install-recommends -y \
+ && apt install libvips --no-install-recommends -y \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
