@@ -30,3 +30,8 @@ target_link_libraries(${MAIN_EXE} PRIVATE PkgConfig::LIBVIPS)
 set(TEST_EXE "test")
 add_executable(${TEST_EXE} "test/test.cpp" "vendor/ada.cpp")
 target_compile_options(${TEST_EXE} PRIVATE "-Wall" "-Wextra")
+
+add_executable("playground" "playground.cpp")
+target_compile_options("playground" PRIVATE "-Wall" "-Wextra")
+target_include_directories("playground" PRIVATE PkgConfig::LIBVIPS)
+target_link_libraries("playground" PRIVATE PkgConfig::LIBVIPS)
