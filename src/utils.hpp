@@ -25,6 +25,19 @@ sanitize_filename(std::string_view const& s)
 
 /**
  * Create a string view that references the portion of the input string before
+ * the last dot, eventually the whole string if no dot is found.
+ */
+std::string_view
+get_filename_without_extension(std::string_view const& s)
+{
+  auto last_dot = s.find_last_of('.');
+  if (last_dot == std::string::npos)
+    return s;
+  return s.substr(0, last_dot);
+}
+
+/**
+ * Create a string view that references the portion of the input string before
  * the first
  * '#' character, with any trailing whitespace removed.
  *

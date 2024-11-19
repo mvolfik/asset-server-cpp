@@ -73,12 +73,6 @@ struct load_image_result
   Magick::Image image;
 };
 
-struct error_result
-{
-  std::string error;
-  boost::beast::http::status response_code;
-};
-
 struct empty_result
 {};
 

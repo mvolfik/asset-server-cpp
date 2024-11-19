@@ -7,9 +7,13 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "utils.hpp"
+
+#include "storage/fs.hpp"
+#include "storage/interface.hpp"
 
 /**
  * Size specification can be:
@@ -163,7 +167,9 @@ parse_bytes(std::string_view const& s)
     }
     val = val * 10 + (s[i] - '0');
   }
-  throw std::runtime_error("Missing byte value suffix (use 'B' to mark individual bytes): " + std::string(s));
+  throw std::runtime_error(
+    "Missing byte value suffix (use 'B' to mark individual bytes): " +
+    std::string(s));
   return val;
 }
 
@@ -186,8 +192,7 @@ struct config
 
   std::string auth_header_val;
 
-  std::string data_dir;
-  std::string temp_dir;
+  std::unique_ptr<storage_interface> storage = nullptr;
 
   unsigned get_thread_pool_size() const
   {
@@ -224,6 +229,8 @@ struct config
                                std::string(filename) + "'");
 
     std::string buf;
+
+    std::unordered_set<std::string> seen_keys;
     while (std::getline(file, buf)) {
       auto line = remove_comment_and_trailing_whitespace(buf);
       if (line.empty())
@@ -235,6 +242,9 @@ struct config
 
       auto key = line.substr(0, pos);
       auto value = line.substr(pos + 1);
+
+      if (!seen_keys.emplace(key).second)
+        throw std::runtime_error("Duplicate config key: " + std::string(key));
 
       try {
         if (key == "listen_host") {
@@ -251,13 +261,21 @@ struct config
           cfg.upload_limit_bytes = parse_bytes(value);
         } else if (key == "auth_token") {
           cfg.auth_header_val = "Bearer " + std::string(value);
-        } else if (key == "data_dir") {
-          cfg.data_dir = value;
-        } else if (key == "temp_dir") {
-          cfg.temp_dir = value;
         } else if (key == "sizes") {
           cfg.sizes = size_specs::parse(value);
-        } else if (key.length() > 8 && key.compare(0, 8, "formats.") == 0) {
+        } else if (key == "storage.type") {
+          if (value == "fs")
+            cfg.storage = std::make_unique<storage_fs>();
+          else
+            throw std::runtime_error("Unknown storage type: " +
+                                     std::string(value));
+        } else if (key.substr(0, 8) == "storage.") {
+          if (!cfg.storage)
+            throw std::runtime_error("storage.type not specified (it must come "
+                                     "before other storage.* keys)");
+
+          cfg.storage->set_config(key.substr(8), value);
+        } else if (key.substr(0, 8) == "formats.") {
           auto format = key.substr(8);
           std::vector<std::string> formats;
           std::string::size_type start = 0;
@@ -289,10 +307,10 @@ struct config
     if (cfg.formats.empty())
       throw std::runtime_error("No formats specified");
 
-    if (cfg.data_dir.empty())
-      throw std::runtime_error("data_dir not specified");
-    if (cfg.temp_dir.empty())
-      throw std::runtime_error("temp_dir not specified");
+    if (!cfg.storage)
+      throw std::runtime_error("No storage type specified");
+
+    cfg.storage->validate();
 
     if (cfg.socket_kill_timeout_secs <= cfg.processing_timeout_secs)
       throw std::runtime_error("socket_kill_timeout_secs must be greater than "

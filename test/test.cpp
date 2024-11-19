@@ -37,6 +37,15 @@ test_remove_comment_and_trailing_whitespace()
   assert_eq(remove_comment_and_trailing_whitespace("abc   .#de"), "abc   .");
 }
 
+void
+test_get_filename_without_extension()
+{
+  assert_eq(get_filename_without_extension("abc"), "abc");
+  assert_eq(get_filename_without_extension("abc.def"), "abc");
+  assert_eq(get_filename_without_extension("abc.def.ghi"), "abc.def");
+  assert_eq(get_filename_without_extension("abc.def.ghi.jkl"), "abc.def.ghi");
+}
+
 std::string
 stringify_vec(std::vector<dimension_t> v)
 {
@@ -79,6 +88,7 @@ main()
     T(test_sanitize_filename),
     T(test_remove_comment_and_trailing_whitespace),
     T(test_size_spec),
+    T(test_get_filename_without_extension),
   };
 
   int failed = 0;

@@ -1,9 +1,17 @@
-#include "main.hpp"
+#include <iostream>
+#include <memory>
+
+#include <boost/asio.hpp>
+#include <boost/beast/core.hpp>
+#include <boost/beast/http.hpp>
+
+#include "config.hpp"
+#include "http_connection.hpp"
 
 void
 http_server(boost::asio::ip::tcp::acceptor& acceptor,
             boost::asio::ip::tcp::socket& socket,
-            thread_pool<resize_executor>& pool,
+            work_queue& pool,
             config const& cfg)
 {
   acceptor.async_accept(socket, [&](boost::beast::error_code ec) {
@@ -16,6 +24,12 @@ http_server(boost::asio::ip::tcp::acceptor& acceptor,
   });
 }
 
+void
+print_usage(char const* argv0)
+{
+  std::cout << "Usage: " << argv0 << " [--config-file <file>]" << std::endl;
+}
+
 enum class argv_parse_state
 {
   none,
@@ -25,14 +39,13 @@ enum class argv_parse_state
 int
 main(int argc, char* argv[])
 {
+  const char* cfg_file = "asset-server.cfg";
   try {
-    // load and parse the config file
-    const char* cfg_file = "asset-server.cfg";
+    // load command-line arguments
     argv_parse_state state = argv_parse_state::none;
     for (int i = 1; i < argc; i++) {
       if (strcmp(argv[i], "--help") == 0) {
-        std::cout << "Usage: " << argv[0] << " [--config-file <file>]"
-                  << std::endl;
+        print_usage(argv[0]);
         return 0;
       } else if (state == argv_parse_state::cfg_file) {
         cfg_file = argv[i];
@@ -45,17 +58,20 @@ main(int argc, char* argv[])
     }
     if (state == argv_parse_state::cfg_file)
       throw std::runtime_error("Expected argument for --config-file");
+  } catch (std::exception const& e) {
+    std::cerr << "Error: " << e.what() << std::endl;
+    print_usage(argv[0]);
+    return 1;
+  }
 
+  try {
     config cfg = config::parse(cfg_file);
 
     // create the worker pool
-    thread_pool<resize_executor> pool(cfg.get_thread_pool_size());
+    // thread_pool<resize_executor> pool(cfg.get_thread_pool_size());
+    int pool = 5;
 
-    // prepare the data folder
-    std::filesystem::remove_all(cfg.temp_dir);
-    std::filesystem::create_directory(cfg.temp_dir);
-    std::filesystem::create_directory(cfg.data_dir);
-    // todo: verify the contents?
+    cfg.storage->init();
 
     // prepare the boost async runtime
     boost::asio::io_context ctx;
@@ -79,7 +95,7 @@ main(int argc, char* argv[])
     http_server(acceptor, socket, pool, cfg);
 
     ctx.run();
-    pool.blocking_shutdown();
+    // pool.blocking_shutdown();
   } catch (std::exception const& e) {
     std::cerr << "Error: " << e.what() << std::endl;
     return 1;
