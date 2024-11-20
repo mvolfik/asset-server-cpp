@@ -6,50 +6,52 @@ Implementation of parallelism, to avoid processing same image twice:
 
 - calculate hash of received image data
 - check if image with this hash is already saved; if yes, done
-- lock hashmap<hash, vec<notifier>>
+- lock `hashmap<hash, notifier=shared_ptr<atomic_bool>>`
 - if entry for given hash exists:
-  - register a notifier
+  - get a reference to the notifier
   - unlock hashmap
-  - sleep on notifier
+  - sleep on the notifier (`atomic_bool.wait(true)`)
   - after wakeup, the file is ready, done
 - else:
-  - create entry with empty vec
+  - create entry with `make_shared(true)`, keep the reference
   - unlock hashmap
   - again, check if image with this hash is already saved, if no:
     - process the image in tmpdir
     - when done, atomically rename the built folder to target location
   - (regardless of whether we actually did the processing, or if we noticed that the result already exists:)
   - lock hashmap again
-  - notify all registered notifiers
   - remove the entry
-  - unlock
+  - unlock hashmap
+  - `*notifier = false`
+  - `notifier.notify_all()`
   - done
 
-The existence check after creating the hashmap entry **is necessary**, in a sense, the first existence check is just an optimization to decrease lock contention on the hashmap. Here's an example scenario, where the second check saves us from doing the same thing twice:
+The otifier
 
-| request 1 | request 2 | request 3 |
-|-----------|-----------|-----------|
-| exist check (false) |||
-| lock |||
-| create entry with empty list of notifiers |||
-| unlock |||
-| exist check (false) | exist check (false) | exist check (false) |
-| process image, rename to target folder | ... | ... |
-| lock | ... | ... |
-| notify registered notifiers and remove entry | ... | ... |
-| unlock | ... | ... |
-| \<done> | lock | ... |
-|| create entry with empty list of notifiers | ... |
-|| unlock | ... |
-||| lock |
-||| entry exists -> register notifier |
-||| unlock and sleep |
-|| exist check (true) ||
-|| lock ||
-|| notify registered notifiers and remove entry | (wakes up) |
-|| unlock ||
-|| \<done> | \<done> |
+The existence check after creating the hashmap entry **is necessary** - in a sense, the first existence check is just an optimization. Here's an example scenario, where the second check saves us from doing the same thing twice:
 
+| request 1                                    | request 2                                    | request 3                         |
+| -------------------------------------------- | -------------------------------------------- | --------------------------------- |
+| exist check (false)                          |                                              |                                   |
+| lock                                         |                                              |                                   |
+| create entry with empty list of notifiers    |                                              |                                   |
+| unlock                                       |                                              |                                   |
+| exist check (false)                          | exist check (false)                          | exist check (false)               |
+| process image, rename to target folder       | ...                                          | ...                               |
+| lock                                         | ...                                          | ...                               |
+| notify registered notifiers and remove entry | ...                                          | ...                               |
+| unlock                                       | ...                                          | ...                               |
+| \<done>                                      | lock                                         | ...                               |
+|                                              | create entry with empty list of notifiers    | ...                               |
+|                                              | unlock                                       | ...                               |
+|                                              |                                              | lock                              |
+|                                              |                                              | entry exists -> register notifier |
+|                                              |                                              | unlock and sleep                  |
+|                                              | exist check (true)                           |                                   |
+|                                              | lock                                         |                                   |
+|                                              | notify registered notifiers and remove entry | (wakes up)                        |
+|                                              | unlock                                       |                                   |
+|                                              | \<done>                                      | \<done>                           |
 
 Build and run on Debian:
 

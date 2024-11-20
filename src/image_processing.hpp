@@ -66,6 +66,10 @@ private:
   void finalize(std::exception const* e)
   {
     if (processing_flag) {
+      {
+        std::lock_guard lock(state.currently_processing_mutex);
+        state.currently_processing.erase(hash);
+      }
       processing_flag->store(false);
       processing_flag->notify_all();
     }
