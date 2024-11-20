@@ -3,13 +3,14 @@
 
 #include <vips/vips8>
 
+#include "src/image_processing.hpp"
+#include "src/server_state.hpp"
 #include "src/thread_pool.hpp"
 
 using vips::VImage;
 
-template<typename OnFinish>
 void
-task(int groupi, int i, std::shared_ptr<task_group<OnFinish>> ptr)
+task(int groupi, int i, std::shared_ptr<task_group> ptr)
 {
   int N = 10;
   std::cerr << "Task " << i << "/" << groupi << " started\n";
@@ -31,36 +32,62 @@ main(int argc, char* argv[])
 
   thread_pool pool(1);
 
-  auto onFinishFactory = [](int groupi) {
-    return [groupi]() { std::cerr << "Group " << groupi << " finished\n"; };
+  config cfg = config::parse("../asset-server.cfg");
+
+  std::atomic<bool> done = false;
+  std::atomic<bool> err = false;
+
+  std::unordered_map<std::string, std::shared_ptr<std::atomic<bool>>>
+    currently_processing;
+  std::mutex currently_processing_mutex;
+
+  auto handler = [&done, &err](std::exception const* e) {
+    if (e) {
+      std::cerr << "Error: " << e->what() << std::endl;
+      err = true;
+    }
+
+    done = true;
   };
 
-  using groupt = task_group<decltype(onFinishFactory(0))>;
+  std::ifstream file("a.png", std::ios::binary | std::ios::ate);
+  auto pos = file.tellg();
+  if (pos < 0)
+    throw std::runtime_error("Failed to open file");
+  std::vector<std::uint8_t> file_content(pos);
+  file.seekg(0);
+  file.read(reinterpret_cast<char*>(file_content.data()), file_content.size());
 
-  std::vector<std::shared_ptr<groupt>> groups;
+  image_processor processor(
+    { cfg, pool, currently_processing, currently_processing_mutex },
+    handler,
+    file_content,
+    "čáíěšěíášřýěšřěýěíšýěřšěíýšěřýšříýřšě.png");
 
-  for (int i = 1; i <= 3; i++) {
-    auto ptr = std::make_shared<groupt>(
-      pool,
-      [i](std::exception const& e) {
-        std::cerr << "Error in group " << i << ": " << e.what() << std::endl;
-      },
-      onFinishFactory(i));
-    groups.push_back(ptr);
+  while (!done)
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-    ptr->add_task([i, ptr]() {
-      std::cerr << "Group " << i << " started\n";
-      task(i, 1, ptr);
-    });
-    ptr->add_task([i, ptr]() {
-      std::cerr << "Group " << i << " started\n";
-      task(i, 21, ptr);
-    });
+  if (err) {
+    pool.blocking_shutdown();
+    return 1;
   }
 
-  while (true) {
-    std::this_thread::sleep_for(std::chrono::seconds(1));
+  auto& response_stream = std::cout;
+  response_stream << "{\"filename\": \"" << processor.get_filename()
+                  << "\", \"hash\": \"" << processor.get_hash()
+                  << "\", \"original\": \"" << processor.get_original_format()
+                  << "\", \"variants\": [";
+
+  bool first = true;
+  for (auto const& d : processor.get_dimensions()) {
+    if (!first)
+      response_stream << ", ";
+    first = false;
+    d.write_json(response_stream);
   }
+  response_stream << "]}\n";
+
+  pool.blocking_shutdown();
 
   // VImage img = VImage::new_from_file("a.png", NULL);
 

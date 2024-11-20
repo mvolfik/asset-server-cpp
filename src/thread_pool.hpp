@@ -64,7 +64,6 @@ public:
  * Any handling of results from tasks must be taken care of by the user, as the
  * task return value is ignored.
  */
-template<typename OnFinish>
 class task_group
 {
 private:
@@ -72,12 +71,12 @@ private:
   std::atomic_bool is_done{ false };
   std::atomic_uint pending_tasks{ 0 };
   std::function<void(std::exception const&)> on_error;
-  OnFinish on_finish;
+  std::function<void()> on_finish;
 
 public:
   task_group(thread_pool& pool,
              std::function<void(std::exception const&)>&& on_error,
-             OnFinish&& on_finish)
+             std::function<void()>&& on_finish)
     : pool(pool)
     , on_error(std::move(on_error))
     , on_finish(std::move(on_finish))
@@ -100,14 +99,14 @@ public:
           std::cerr << "Error in task after group was marked as done: "
                     << e.what() << std::endl;
         } else {
-          std::invoke(on_error, e);
+          on_error(e);
         }
         return;
       }
       if (pending_tasks.fetch_sub(1) == 1) {
         // we were the last task to finish
         if (!is_done.exchange(true))
-          std::invoke(on_finish);
+          on_finish();
         // else: the group already errored
       }
     });

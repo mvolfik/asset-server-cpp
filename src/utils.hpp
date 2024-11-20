@@ -6,21 +6,47 @@
 #include <string>
 #include <string_view>
 
-/**
- * Sanitize a string to be used as a filename: replace all non-alphanumeric
- * characters with '_'
- */
-std::string
-sanitize_filename(std::string_view const& s)
+#include <openssl/sha.h>
+
+#include <unidecode/unidecode.hpp>
+#include <unidecode/utf8_string_iterator.hpp>
+
+class Sanitizer
 {
+private:
   std::string result;
-  for (auto c : s) {
+
+public:
+  Sanitizer() {}
+
+  using value_type = char;
+
+  void push_back(char c)
+  {
+    if (result.size() >= 64)
+      return;
+
     if (std::isalnum(c) || c == '-' || c == '_')
       result += c;
     else
       result += '_';
   }
-  return result;
+
+  std::string take_result() { return std::move(result); }
+};
+
+/**
+ * Sanitize a string to be used as a filename: replace all non-alphanumeric
+ * characters with '_'
+ */
+std::string
+sanitize_filename(std::string_view s)
+{
+  Sanitizer sanitizer;
+  unidecode::Unidecode(unidecode::Utf8StringIterator(s.begin()),
+                       unidecode::Utf8StringIterator(s.end()),
+                       std::back_inserter(sanitizer));
+  return sanitizer.take_result();
 }
 
 /**
@@ -28,12 +54,21 @@ sanitize_filename(std::string_view const& s)
  * the last dot, eventually the whole string if no dot is found.
  */
 std::string_view
-get_filename_without_extension(std::string_view const& s)
+get_filename_without_extension(std::string_view s)
 {
   auto last_dot = s.find_last_of('.');
   if (last_dot == std::string::npos)
     return s;
   return s.substr(0, last_dot);
+}
+
+std::string_view
+get_extension(std::string_view s)
+{
+  auto last_dot = s.find_last_of('.');
+  if (last_dot == std::string::npos)
+    return {};
+  return s.substr(last_dot + 1);
 }
 
 /**
@@ -59,7 +94,7 @@ remove_comment_and_trailing_whitespace(std::string const& s)
 }
 
 int
-string_view_to_int(std::string_view const& s)
+string_view_to_int(std::string_view s)
 {
   int result;
   auto err = std::from_chars(s.data(), s.data() + s.size(), result);
@@ -82,6 +117,22 @@ dimension_t
 div_round_close(dimension_t a, dimension_t b)
 {
   return (a + b / 2) / b;
+}
+
+static const char* hex_chars = "0123456789abcdef";
+
+std::string
+sha256(std::vector<std::uint8_t> const& data)
+{
+  std::vector<unsigned char> hash(SHA256_DIGEST_LENGTH);
+  SHA256(data.data(), data.size(), hash.data());
+  // bytes to hex
+  std::string result;
+  for (auto c : hash) {
+    result += hex_chars[c >> 4];
+    result += hex_chars[c & 0xf];
+  }
+  return result;
 }
 
 #endif // UTILS_HPP

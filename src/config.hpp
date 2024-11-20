@@ -42,7 +42,7 @@ struct size_spec
   /**
    * Parse a size spec from a string.
    */
-  static size_spec parse(std::string_view const& s)
+  static size_spec parse(std::string_view  s)
   {
     size_spec spec;
     auto colon_pos = s.find(':');
@@ -108,7 +108,7 @@ struct size_specs
 {
   std::vector<size_spec> specs;
 
-  static size_specs parse(std::string_view const& s)
+  static size_specs parse(std::string_view s)
   {
     size_specs result;
     std::string::size_type start = 0;
@@ -138,7 +138,7 @@ struct size_specs
  * Suffixes are interpreted as powers of 1024.
  */
 unsigned
-parse_bytes(std::string_view const& s)
+parse_bytes(std::string_view s)
 {
   unsigned val = 0;
   for (std::size_t i = 0; i < s.size(); i++) {
