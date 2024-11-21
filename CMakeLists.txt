@@ -16,6 +16,7 @@ find_package(Boost REQUIRED)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBVIPS REQUIRED IMPORTED_TARGET vips-cpp)
+pkg_check_modules(LIBMAGIC REQUIRED IMPORTED_TARGET libmagic)
 
 SET(ADA_TOOLS OFF)
 SET(ADA_TESTING OFF)
@@ -52,6 +53,9 @@ foreach(EXE IN ITEMS ${MAIN_EXE} ${TEST_EXE} ${PLAYGROUND_EXE})
 
     target_include_directories(${EXE} PRIVATE PkgConfig::LIBVIPS)
     target_link_libraries(${EXE} PRIVATE PkgConfig::LIBVIPS)
+
+    target_include_directories(${EXE} PRIVATE PkgConfig::LIBMAGIC)
+    target_link_libraries(${EXE} PRIVATE PkgConfig::LIBMAGIC)
 
     target_include_directories(${EXE} PRIVATE OpenSSL::Crypto)
     target_link_libraries(${EXE} PRIVATE OpenSSL::Crypto)

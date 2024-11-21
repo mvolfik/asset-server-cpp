@@ -32,7 +32,11 @@ data/
 {
   "filename": "obrazek",
   "hash": "0123456789abcdef",
-  "original": "png",
+  "original": {
+    "width": 1200,
+    "height": 1500,
+    "formats": ["png"]
+  },
   "variants": [
     {
       "width": 1200,

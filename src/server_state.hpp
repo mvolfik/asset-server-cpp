@@ -5,6 +5,8 @@
 #include <mutex>
 #include <unordered_map>
 
+#include <magic.h>
+
 #include "config.hpp"
 #include "thread_pool.hpp"
 
@@ -20,6 +22,8 @@ struct server_state
   std::unordered_map<std::string, std::shared_ptr<std::atomic<bool>>>&
     currently_processing;
   std::mutex& currently_processing_mutex;
+
+  magic_t magic_cookie = nullptr;
 };
 
 #endif // SERVER_STATE_HPP

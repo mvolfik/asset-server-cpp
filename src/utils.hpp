@@ -21,6 +21,8 @@ public:
 
   using value_type = char;
 
+  // implementing push_back and then using this with std::back_inserter is the
+  // easiest way to hook this as an output iterator to unidecode::Unidecode
   void push_back(char c)
   {
     if (result.size() >= 64)

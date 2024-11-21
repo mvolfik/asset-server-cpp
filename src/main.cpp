@@ -8,27 +8,29 @@
 
 #include "config.hpp"
 #include "http_connection.hpp"
+#include "image_processing.hpp"
+#include "server_state.hpp"
+#include "thread_pool.hpp"
 
 void
 http_server(boost::asio::ip::tcp::acceptor& acceptor,
             boost::asio::ip::tcp::socket& socket,
-            work_queue& pool,
-            config const& cfg)
+            server_state state)
 {
   acceptor.async_accept(socket, [&](boost::beast::error_code ec) {
     // start the request, and "recurse" to accept next connection (it just
     // calls the function again, passing the references through, and the
     // previous call returns)
     if (!ec)
-      std::make_shared<http_connection>(std::move(socket), pool, cfg)->start();
-    http_server(acceptor, socket, pool, cfg);
+      std::make_shared<http_connection>(std::move(socket), state)->start();
+    http_server(acceptor, socket, state);
   });
 }
 
 void
 print_usage(char const* argv0)
 {
-  std::cout << "Usage: " << argv0 << " [--config-file <file>]" << std::endl;
+  std::cerr << "Usage: " << argv0 << " [--config-file <file>]" << std::endl;
 }
 
 enum class argv_parse_state
@@ -67,12 +69,18 @@ main(int argc, char* argv[])
 
   try {
     config cfg = config::parse(cfg_file);
-
-    // create the worker pool
-    // thread_pool<resize_executor> pool(cfg.get_thread_pool_size());
-    int pool = 5;
-
     cfg.storage->init();
+
+    thread_pool pool(cfg.get_thread_pool_size());
+
+    std::unordered_map<std::string, std::shared_ptr<std::atomic<bool>>>
+      currently_processing;
+    std::mutex currently_processing_mutex;
+
+    server_state state{
+      cfg, pool, currently_processing, currently_processing_mutex
+    };
+    init_image_processing(state);
 
     // prepare the boost async runtime
     boost::asio::io_context ctx;
@@ -93,10 +101,10 @@ main(int argc, char* argv[])
 
     std::cerr << "Listening on http://" << cfg.listen_host << ":"
               << cfg.listen_port << std::endl;
-    http_server(acceptor, socket, pool, cfg);
+    http_server(acceptor, socket, state);
 
     ctx.run();
-    // pool.blocking_shutdown();
+    pool.blocking_shutdown();
   } catch (std::exception const& e) {
     std::cerr << "Error: " << e.what() << std::endl;
     return 1;

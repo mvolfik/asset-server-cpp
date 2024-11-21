@@ -7,6 +7,37 @@
 
 #include "interface.hpp"
 
+class storage_fs;
+
+class fs_staged_folder : public staged_folder
+{
+  friend class storage_fs;
+
+private:
+  std::filesystem::path path;
+  std::string final_name;
+
+  void create_file(std::string_view name,
+                   std::uint8_t const* data,
+                   size_t size) override
+  {
+    std::filesystem::path full_path = path;
+    full_path /= name;
+    std::ofstream file(full_path, std::ios::binary);
+    if (!file.is_open())
+      throw std::runtime_error("Failed to open file " + full_path.string() +
+                               " for writing");
+    file.write(reinterpret_cast<char const*>(data), size);
+  }
+
+  void create_folder(std::string_view name) override
+  {
+    std::filesystem::path full_path = path;
+    full_path /= name;
+    std::filesystem::create_directory(full_path);
+  }
+};
+
 class storage_fs : public storage_interface
 {
 private:
@@ -67,6 +98,31 @@ public:
       result.push_back(folder);
     }
     return result;
+  }
+
+  std::unique_ptr<staged_folder> create_staged_folder(
+    std::string_view folder) override
+  {
+
+    std::filesystem::path full_path = temp_dir;
+    full_path /= std::string(folder) + std::to_string(std::rand());
+    std::cerr << "Creating staged folder at " << full_path << std::endl;
+
+    std::filesystem::create_directory(full_path);
+    auto result = std::make_unique<fs_staged_folder>();
+    result->path = full_path;
+    result->final_name = folder;
+    return result;
+  }
+
+  void commit_staged_folder(std::unique_ptr<staged_folder> folder) override
+  {
+    auto fs_folder = dynamic_cast<fs_staged_folder*>(folder.get());
+    if (!fs_folder)
+      throw std::runtime_error("commit_staged_folder called with wrong type");
+    std::filesystem::path full_path = data_dir;
+    full_path /= fs_folder->final_name;
+    std::filesystem::rename(fs_folder->path, full_path);
   }
 };
 

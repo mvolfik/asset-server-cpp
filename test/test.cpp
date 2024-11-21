@@ -152,10 +152,10 @@ main()
   int failed = 0;
 
   for (auto [test, name] : tests) {
-    std::cout << "Running test: " << name << std::endl;
+    std::cerr << "Running test: " << name << std::endl;
     try {
       test();
-      std::cout << "  passed" << std::endl;
+      std::cerr << "  passed" << std::endl;
     } catch (std::exception const& e) {
       std::cerr << "  failed:\n  " << e.what() << std::endl;
       failed++;

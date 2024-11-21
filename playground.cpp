@@ -25,21 +25,10 @@ task(int groupi, int i, std::shared_ptr<task_group> ptr)
 }
 
 int
-main(int argc, char* argv[])
+process_image(std::string const& filename, server_state state)
 {
-  if (VIPS_INIT(argv[0]))
-    vips_error_exit(NULL);
-
-  thread_pool pool(1);
-
-  config cfg = config::parse("../asset-server.cfg");
-
   std::atomic<bool> done = false;
   std::atomic<bool> err = false;
-
-  std::unordered_map<std::string, std::shared_ptr<std::atomic<bool>>>
-    currently_processing;
-  std::mutex currently_processing_mutex;
 
   auto handler = [&done, &err](std::exception const* e) {
     if (e) {
@@ -50,7 +39,7 @@ main(int argc, char* argv[])
     done = true;
   };
 
-  std::ifstream file("a.png", std::ios::binary | std::ios::ate);
+  std::ifstream file(filename, std::ios::binary | std::ios::ate);
   auto pos = file.tellg();
   if (pos < 0)
     throw std::runtime_error("Failed to open file");
@@ -58,25 +47,21 @@ main(int argc, char* argv[])
   file.seekg(0);
   file.read(reinterpret_cast<char*>(file_content.data()), file_content.size());
 
-  image_processor processor(
-    { cfg, pool, currently_processing, currently_processing_mutex },
-    handler,
-    file_content,
-    "čáíěšěíášřýěšřěýěíšýěřšěíýšěřýšříýřšě.png");
+  image_processor processor(state, handler, file_content, filename);
 
   while (!done)
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
   if (err) {
-    pool.blocking_shutdown();
     return 1;
   }
 
   auto& response_stream = std::cout;
   response_stream << "{\"filename\": \"" << processor.get_filename()
                   << "\", \"hash\": \"" << processor.get_hash()
-                  << "\", \"original\": \"" << processor.get_original_format()
-                  << "\", \"variants\": [";
+                  << "\", \"original\": ";
+  processor.get_original().write_json(response_stream);
+  response_stream << ", \"variants\": [";
 
   bool first = true;
   for (auto const& d : processor.get_dimensions()) {
@@ -85,14 +70,41 @@ main(int argc, char* argv[])
     first = false;
     d.write_json(response_stream);
   }
-  response_stream << "]}\n";
+  response_stream << "], \"is_new\": "
+                  << (processor.get_is_new() ? "true" : "false") << "}\n";
+  return 0;
+}
+
+int
+main(int argc, char* argv[])
+{
+  if (VIPS_INIT(argv[0]))
+    vips_error_exit(NULL);
+
+  thread_pool pool(12);
+
+  config cfg = config::parse("../asset-server.cfg");
+  cfg.storage->init();
+
+  std::unordered_map<std::string, std::shared_ptr<std::atomic<bool>>>
+    currently_processing;
+  std::mutex currently_processing_mutex;
+
+  server_state state{
+    cfg, pool, currently_processing, currently_processing_mutex
+  };
+  init_image_processing(state);
+
+  std::string filename("a.png");
+  if (argc > 1)
+    filename = argv[1];
+
+  int ret = process_image(filename, state);
+  if (ret != 0) {
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+  }
 
   pool.blocking_shutdown();
 
-  // VImage img = VImage::new_from_file("a.png", NULL);
-
-  // img = img.thumbnail_image(128);
-  // img.write_to_file("b.jpeg");
-
-  return 0;
+  return ret;
 }

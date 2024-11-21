@@ -6,7 +6,7 @@
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 
-#include "config.hpp"
+#include "server_state.hpp"
 
 struct error_result
 {
@@ -259,9 +259,7 @@ private:
   //     kill_socket_on_deadline();
   //   }
 public:
-  http_connection(boost::asio::ip::tcp::socket socket,
-                  work_queue& pool,
-                  config const& cfg)
+  http_connection(boost::asio::ip::tcp::socket socket, server_state state)
   {
     std::cerr << "connection created\n";
   }
