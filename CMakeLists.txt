@@ -44,8 +44,11 @@ add_executable(${TEST_EXE} "test/test.cpp")
 set(PLAYGROUND_EXE "playground")
 add_executable(${PLAYGROUND_EXE} "playground.cpp")
 
+set(SANDBOX_EXE "sandbox")
+add_executable(${SANDBOX_EXE} "sandbox.cpp")
 
-foreach(EXE IN ITEMS ${MAIN_EXE} ${TEST_EXE} ${PLAYGROUND_EXE})
+
+foreach(EXE IN ITEMS ${MAIN_EXE} ${TEST_EXE} ${PLAYGROUND_EXE} ${SANDBOX_EXE})
     target_compile_options(${EXE} PRIVATE "-Wall" "-Wextra")
 
     target_include_directories(${EXE} PRIVATE ${Boost_INCLUDE_DIRS})
@@ -65,4 +68,7 @@ foreach(EXE IN ITEMS ${MAIN_EXE} ${TEST_EXE} ${PLAYGROUND_EXE})
 
     target_include_directories(${EXE} PRIVATE ada::ada)
     target_link_libraries(${EXE} PRIVATE ada::ada)
+
+    target_compile_options(${EXE} PRIVATE -fsanitize=address)
+    target_link_options(${EXE} PRIVATE -fsanitize=address)
 endforeach()

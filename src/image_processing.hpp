@@ -61,21 +61,11 @@ init_image_processing(server_state& state)
     throw std::runtime_error("Failed to load default libmagic database");
 }
 
-// TODO: in the current architecture, when something errors out, the image
-// processor is freed, and any scheduled tasks will refer to a freed object.
-// weak_from_self sounds like a viable solution, not sure if we can solve it any
-// better way
-
-/**
- *
- * @tparam ReadyHook A callback of type void(std::exception const* e) - called
- * when processing is done, with nullptr if everything went well, or a pointer
- * to the exception if an error occurred.
- */
-template<typename ReadyHook>
-class image_processor
+class image_processor : public std::enable_shared_from_this<image_processor>
 {
 private:
+  using ReadyHook = std::function<void(std::exception const*)>;
+
   task_group group;
   server_state state;
   ReadyHook ready_hook;
@@ -150,9 +140,12 @@ private:
       spec.formats.push_back(std::move(format));
     }
 
-    for (unsigned i = 0; i < spec.formats.size(); ++i)
-      group.add_task(
-        [this, resized, index, i]() { save_to_format(resized, index, i); });
+    for (unsigned i = 0; i < spec.formats.size(); ++i) {
+      group.add_task_from_weak(this->weak_from_this(),
+                               [resized, index, i](image_processor& self) {
+                                 self.save_to_format(resized, index, i);
+                               });
+    }
   }
 
   void start_processing(std::vector<std::uint8_t> const& data)
@@ -187,8 +180,11 @@ private:
       dimensions.push_back(spec);
     }
 
-    for (unsigned i = 0; i < dimensions.size(); ++i)
-      group.add_task([this, image, i]() { resize(image, i); });
+    for (unsigned i = 0; i < dimensions.size(); ++i) {
+      group.add_task_from_weak(
+        this->weak_from_this(),
+        [image, i](image_processor& self) { self.resize(image, i); });
+    }
   }
 
   bool find_existing_data(std::string const& hash)
@@ -271,15 +267,25 @@ private:
 
     is_new = true;
 
-    group.add_task([this, &data]() { start_processing(data); });
+    group.add_task_from_weak(
+      this->weak_from_this(),
+      [&data](image_processor& self) { self.start_processing(data); });
+
     // add here any other tasks that can be done in parallel to image
     // processing. Note that at this point, the original dimensions_spec and the
     // dimensions vector are empty.
   }
 
+  struct PrivateTag
+  {
+    explicit PrivateTag() = default;
+  };
+
 public:
-  image_processor(server_state state,
-                  ReadyHook ready_hook,
+  /// Constructor only for use by create()
+  image_processor(PrivateTag,
+                  server_state state,
+                  ReadyHook&& ready_hook,
                   std::vector<std::uint8_t> const& data,
                   std::string const& suggested_filename)
     : group(
@@ -287,15 +293,40 @@ public:
         [this](std::exception const& e) { finalize(&e); },
         [this]() { finalize(nullptr); })
     , state(state)
-    , ready_hook(ready_hook)
+    , ready_hook(std::move(ready_hook))
     , filename(
         sanitize_filename(get_filename_without_extension(suggested_filename)))
-    , original{ 0, 0, { std::string(get_extension(suggested_filename)) } }
+    , original{ 0, 0, { sanitize_filename(get_extension(suggested_filename)) } }
+  {
+  }
+
+  ~image_processor() {
+    std::cerr << "Destroying image processor for " << hash << std::endl;
+  }
+
+  /**
+   * Creates a new image processor, returning a shared pointer to it, and starts processing.
+   * 
+   * Since this class starts background tasks, it needs to ensure that it is not destroyed
+   */
+  static std::shared_ptr<image_processor> create(
+    server_state state,
+    ReadyHook&& ready_hook,
+    std::vector<std::uint8_t> const& data,
+    std::string const& suggested_filename)
   {
     if (!state.magic_cookie) {
       throw std::runtime_error("Image processing not initialized");
     }
-    group.add_task([this, &data]() { check_existence(data); });
+
+    auto shared = std::make_shared<image_processor>(
+      PrivateTag{}, state, std::move(ready_hook), data, suggested_filename);
+
+    shared->group.add_task_from_weak(
+      shared->weak_from_this(),
+      [&data](image_processor& self) { self.check_existence(data); });
+
+    return shared;
   }
 
   std::vector<dimensions_spec> const& get_dimensions() const
@@ -310,6 +341,8 @@ public:
   dimensions_spec const& get_original() const { return original; }
 
   bool get_is_new() const { return is_new; }
+
+  std::weak_ptr<image_processor> get_weak() { return this->weak_from_this(); }
 };
 
 #endif // IMAGE_PROCESSING_HPP

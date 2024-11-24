@@ -34,6 +34,8 @@ public:
           std::function<void()> executor = std::move(tasks.front());
           tasks.pop_front();
           lock.unlock();
+          if (rand() % 2 == 0)
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
           executor();
         }
       });
@@ -67,9 +69,32 @@ public:
 class task_group
 {
 private:
+  enum class State : std::uint8_t
+  {
+    Running = 0,
+    Done_OK = 1,
+    Done_Error = 2,
+  };
+
   thread_pool& pool;
-  std::atomic_bool is_done{ false };
-  std::atomic_uint pending_tasks{ 0 };
+
+  /**
+   * Starts as Running, then at least one task starts, then any tasks may start
+   * running or finish. Finally, either the number of pending tasks reaches 0
+   * and state is set to Done_OK, or any task throws an exception and the state
+   * is set to Done_Error. After the first Done_* state is set, the state
+   * mustn't be changed again and no more tasks will be added or started.
+   *
+   * Specifically, if all tasks ever finish, this group can't be used for
+   * starting any further tasks.
+   *
+   * After any task raises an exception, no more tasks will be added or started,
+   * but it is not a logic error to do so - only warnings will be printed, and
+   * nothing will happen. Even in this case, the number of pending tasks should
+   * be kept accurate and eventually reach 0, but it serves no real purpose.
+   */
+  std::atomic<State> state{ State::Running };
+  std::atomic<std::int16_t> pending_tasks{ 0 };
   std::function<void(std::exception const&)> on_error;
   std::function<void()> on_finish;
 
@@ -83,32 +108,119 @@ public:
   {
   }
 
+  ~task_group()
+  {
+    std::cerr << "Destroying task group, running: " << pending_tasks.load()
+              << std::endl;
+  }
+
+  bool set_state_if_running(State new_state)
+  {
+    State old = State::Running;
+    return state.compare_exchange_strong(old, new_state);
+  }
+
   template<typename Fn>
   void add_task(Fn&& task)
   {
-    if (is_done)
-      throw std::runtime_error("Cannot add task to a finished group");
+    {
+      auto s = state.load();
+      if (s == State::Done_OK)
+        throw std::logic_error("Cannot add task to a finished group");
+
+      if (s == State::Done_Error) {
+        std::cerr << "Warning: adding task to a group that already errored"
+                  << std::endl;
+        return;
+      }
+    }
 
     pending_tasks.fetch_add(1);
+
     pool.add_task([this, task = std::move(task)]() {
+      {
+        auto s = state.load();
+        std::cerr << "state: " << static_cast<int>(s) << std::endl;
+        if (s == State::Done_OK) {
+          pending_tasks.fetch_sub(1);
+          throw std::logic_error(
+            "Task is about to start running in a finished group");
+        }
+
+        if (s == State::Done_Error) {
+          std::cerr << "Warning: not starting task, since this group already "
+                       "errored"
+                    << std::endl;
+          pending_tasks.fetch_sub(1);
+          return;
+        }
+      }
+
       try {
         task();
       } catch (std::exception const& e) {
-        if (is_done.exchange(true)) {
-          // is done was already set - this is a second or later error
-          std::cerr << "Error in task after group was marked as done: "
-                    << e.what() << std::endl;
-        } else {
+        bool exchanged = set_state_if_running(State::Done_Error);
+        pending_tasks.fetch_sub(1);
+        if (exchanged) {
+          // we're the first error
           on_error(e);
+
+          // it is race-free to read the state here - in the compare-exchange
+          // above, it was not Running, so either of the Done_* states, so it
+          // won't be changed again since then
+        } else if (state.load() == State::Done_OK) {
+          // this is our bug and should never happen
+          throw std::logic_error("A task finished (and errored) after group "
+                                 "was marked as done. The exception: " +
+                                 std::string(e.what()));
+        } else {
+          // this is a normal scenario
+          std::cerr << "Error in task (not the first error in group, there's "
+                       "noone to report to): "
+                    << e.what() << std::endl;
         }
         return;
       }
-      if (pending_tasks.fetch_sub(1) == 1) {
-        // we were the last task to finish
-        if (!is_done.exchange(true))
+
+      auto old_value = pending_tasks.fetch_sub(1);
+      if (old_value == 1) {
+        if (state.load() == State::Done_OK) {
+          // this isn't exactly in sync, but the invariant holds nonetheless
+          throw std::logic_error(
+            "The number of pending tasks reached 0 with this task, but the "
+            "group is already marked as done");
+        }
+        bool exchanged = set_state_if_running(State::Done_OK);
+        if (exchanged)
           on_finish();
         // else: the group already errored
+      } else if (old_value < 1) {
+        // this is our bug and should never happen
+        throw std::logic_error("The number of pending tasks is negative: " +
+                               std::to_string(old_value - 1));
       }
+    });
+  }
+
+  /**
+   * Adds a task that is executed on a shared pointer, if the shared pointer is
+   * still valid. If the shared pointer is expired, the task is not executed and
+   * an exception is thrown from the task.
+   *
+   * FIXME: calling this is still quite ugly, the call sites look like this:
+   * group.add_task_from_weak(
+   *  this->weak_from_this(),
+   *  [&data](YouHaveToSpellTheWholeSelfTypeHere& self) { self.process(data);
+   * });
+   */
+  template<typename Cls, typename Fn>
+  void add_task_from_weak(std::weak_ptr<Cls> weak, Fn&& task)
+  {
+    add_task([weak, task = std::forward<Fn>(task)]() {
+      if (auto shared = weak.lock())
+        task(*shared);
+      else
+        throw std::runtime_error("Weak pointer expired");
     });
   }
 };

@@ -47,31 +47,33 @@ process_image(std::string const& filename, server_state state)
   file.seekg(0);
   file.read(reinterpret_cast<char*>(file_content.data()), file_content.size());
 
-  image_processor processor(state, handler, file_content, filename);
+  auto processor =
+    image_processor::create(state, handler, file_content, filename);
 
   while (!done)
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
+  std::cerr << "Done!\n";
   if (err) {
     return 1;
   }
 
   auto& response_stream = std::cout;
-  response_stream << "{\"filename\": \"" << processor.get_filename()
-                  << "\", \"hash\": \"" << processor.get_hash()
+  response_stream << "{\"filename\": \"" << processor->get_filename()
+                  << "\", \"hash\": \"" << processor->get_hash()
                   << "\", \"original\": ";
-  processor.get_original().write_json(response_stream);
+  processor->get_original().write_json(response_stream);
   response_stream << ", \"variants\": [";
 
   bool first = true;
-  for (auto const& d : processor.get_dimensions()) {
+  for (auto const& d : processor->get_dimensions()) {
     if (!first)
       response_stream << ", ";
     first = false;
     d.write_json(response_stream);
   }
   response_stream << "], \"is_new\": "
-                  << (processor.get_is_new() ? "true" : "false") << "}\n";
+                  << (processor->get_is_new() ? "true" : "false") << "}\n";
   return 0;
 }
 
