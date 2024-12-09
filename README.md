@@ -2,6 +2,11 @@
 
 Specifikace: [specifikace.md](specifikace.md)
 
+## Build and run
+
+
+## Upload race-condition safety
+
 Implementation of parallelism, to avoid processing same image twice:
 
 - calculate hash of received image data
@@ -53,16 +58,7 @@ The existence check after creating the hashmap entry **is necessary** - in a sen
 |                                              | unlock                                       |                                   |
 |                                              | \<done>                                      | \<done>                           |
 
-Build and run on Debian:
 
-```sh
-apt install libvips-dev libboost-dev cmake g++ make --no-install-recommends -y
-mkdir build
-cd build
-cmake ..
-make -j
-./asset-server
-```
 
 Repository also contains working two Dockerfiles, using Debian and Alpine as base images.
 

@@ -1,6 +1,6 @@
 cmake_minimum_required (VERSION 3.20)
 
-project("Asset Server"
+project("Asset Serve"
 VERSION 0.1
 DESCRIPTION "Server for upload, processing and deduplicating of images"
 LANGUAGES CXX
