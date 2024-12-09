@@ -1,13 +1,13 @@
-FROM debian:bookworm as builder
+FROM debian:bookworm AS builder
 
 RUN apt update \
- && apt install libvips-dev libboost-dev cmake g++ make --no-install-recommends -y \
+ && apt install libvips-dev libmagic-dev libboost-dev cmake g++ make git ca-certificates --no-install-recommends -y \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY CMakeLists.txt .
+COPY CMakeLists.txt playground.cpp .
 COPY src src
-COPY vendor vendor
+COPY test test
 
 WORKDIR /app/build
 RUN cmake -DCMAKE_BUILD_TYPE=Release .. && make -j
@@ -15,7 +15,7 @@ RUN cmake -DCMAKE_BUILD_TYPE=Release .. && make -j
 FROM debian:bookworm
 
 RUN apt update \
- && apt install libvips --no-install-recommends -y \
+ && apt install libvips libmagic1 --no-install-recommends -y \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

@@ -1,20 +1,18 @@
-FROM alpine:3 as builder
+FROM alpine:3 AS builder
 
-RUN apk add --no-cache vips-dev boost-dev cmake g++ make
-
-
+RUN apk add --no-cache openssl-dev vips-dev boost-dev file-dev cmake g++ make git
 
 WORKDIR /app
-COPY CMakeLists.txt .
+COPY CMakeLists.txt playground.cpp .
 COPY src src
-COPY vendor vendor
+COPY test test
 
 WORKDIR /app/build
 RUN cmake -DCMAKE_BUILD_TYPE=Release .. && make -j
 
 FROM alpine:3
 
-RUN apk add --no-cache vips
+RUN apk add --no-cache vips openssl libmagic
 
 
 WORKDIR /app
