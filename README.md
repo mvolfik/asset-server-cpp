@@ -31,7 +31,7 @@ Implementation of parallelism, to avoid processing same image twice:
   - `notifier.notify_all()`
   - done
 
-The otifier
+The notifier is simply a bool (behind a shared_ptr, so that it a) doesn't move and b) can be accessed after the hashmap is unlocked) that starts at `true`, and is set to `false` when the image is ready, and all threads waiting on it are then woken up. (The value check/change is necesary, since [spurious wakeups may happen](https://en.cppreference.com/w/cpp/atomic/atomic/wait).)
 
 The existence check after creating the hashmap entry **is necessary** - in a sense, the first existence check is just an optimization. Here's an example scenario, where the second check saves us from doing the same thing twice:
 
