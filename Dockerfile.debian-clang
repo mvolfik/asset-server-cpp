@@ -4,9 +4,8 @@ FROM debian:bookworm AS builder
 RUN apt update && apt install libvips-dev libmagic-dev libboost-dev cmake make git ca-certificates clang --no-install-recommends -y  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY CMakeLists.txt playground.cpp .
+COPY CMakeLists.txt .
 COPY src src
-COPY test test
 
 WORKDIR /app/build
 RUN cmake -DCMAKE_BUILD_TYPE=Release .. && make -j

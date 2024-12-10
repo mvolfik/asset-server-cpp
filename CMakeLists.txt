@@ -34,21 +34,26 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(unidecode ada)
 
-
 set(MAIN_EXE "asset-server")
 add_executable(${MAIN_EXE} "src/main.cpp")
 
-set(TEST_EXE "test")
-add_executable(${TEST_EXE} "test/test.cpp")
+set(BINARIES ${MAIN_EXE})
 
-set(PLAYGROUND_EXE "playground")
-add_executable(${PLAYGROUND_EXE} "playground.cpp")
+if(${CMAKE_BUILD_TYPE} EQUAL "Debug")
+    set(TEST_EXE "test")
+    add_executable(${TEST_EXE} "test/test.cpp")
 
-set(SANDBOX_EXE "sandbox")
-add_executable(${SANDBOX_EXE} "sandbox.cpp")
+    set(PLAYGROUND_EXE "playground")
+    add_executable(${PLAYGROUND_EXE} "playground.cpp")
+
+    set(SANDBOX_EXE "sandbox")
+    add_executable(${SANDBOX_EXE} "sandbox.cpp")
+
+    list(APPEND BINARIES ${TEST_EXE} ${PLAYGROUND_EXE} ${SANDBOX_EXE})
+endif()
 
 
-foreach(EXE IN ITEMS ${MAIN_EXE} ${TEST_EXE} ${PLAYGROUND_EXE} ${SANDBOX_EXE})
+foreach(EXE IN LISTS BINARIES)
     target_compile_options(${EXE} PRIVATE "-Wall" "-Wextra")
 
     target_include_directories(${EXE} PRIVATE ${Boost_INCLUDE_DIRS})

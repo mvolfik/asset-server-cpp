@@ -4,9 +4,8 @@ FROM {image} AS builder
 RUN {install_dev}
 
 WORKDIR /app
-COPY CMakeLists.txt playground.cpp .
+COPY CMakeLists.txt .
 COPY src src
-COPY test test
 
 WORKDIR /app/build
 RUN cmake -DCMAKE_BUILD_TYPE=Release .. && make -j
@@ -56,7 +55,7 @@ platforms = [
     {
         "name": "fedora",
         "image": "fedora:41",
-        "install-command": "dnf install -y {deps} && dnf clean all",
+        "install-command": "dnf install --setopt=install_weak_deps=False -y {deps} && dnf clean all",
         "dev-deps": [
             "openssl-devel",
             "vips-devel",
