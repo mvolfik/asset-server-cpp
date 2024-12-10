@@ -39,7 +39,9 @@ add_executable(${MAIN_EXE} "src/main.cpp")
 
 set(BINARIES ${MAIN_EXE})
 
-if(${CMAKE_BUILD_TYPE} EQUAL "Debug")
+set(ASSET_SERVER_EXTRA_DEBUG FALSE CACHE BOOL "Extra debug features for asset-server: build targets test,playground,sandbox, build with -fsanitize=address")
+
+if(ASSET_SERVER_EXTRA_DEBUG)
     set(TEST_EXE "test")
     add_executable(${TEST_EXE} "test/test.cpp")
 
@@ -74,6 +76,9 @@ foreach(EXE IN LISTS BINARIES)
     target_include_directories(${EXE} PRIVATE ada::ada)
     target_link_libraries(${EXE} PRIVATE ada::ada)
 
-    target_compile_options(${EXE} PRIVATE -fsanitize=address)
-    target_link_options(${EXE} PRIVATE -fsanitize=address)
+    if(ASSET_SERVER_EXTRA_DEBUG)
+        # this also requires libasan
+        target_compile_options(${EXE} PRIVATE -fsanitize=address)
+        target_link_options(${EXE} PRIVATE -fsanitize=address)
+    endif()
 endforeach()
