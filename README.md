@@ -4,6 +4,53 @@ Specifikace: [specifikace.md](specifikace.md)
 
 ## Build and run
 
+The project should be easy to build on any Linux (or even any Unix-ish?) system, provided you have these development libraries available:
+
+- Basic build tools: `git`, `cmake`, `make`
+- A C++ compiler with support for C++20 or higher - tested with `g++` and `clang`
+- Development headers for `libvips`, `libmagic`, `libboost`.
+
+For example, on Debian-based systems, you can install all of these with
+
+```sh
+apt install libvips-dev libmagic-dev libboost-dev cmake make git g++
+```
+
+Then simply checkout this repository and run the standard CMake build process:
+
+```sh
+git clone https://github.com/mvolfik/asset-server-cpp.git
+cd asset-server-cpp
+
+mkdir build
+cd build
+cmake ..
+make
+```
+
+This will produce an executable named `asset-server` in your repository.
+
+To run it, you need to provide a configuration file. There is an example one with explanations of all available fields provided in the repository.
+
+From the build folder, use it with `./asset-server --config-file ../asset-server.cfg`.
+
+### Docker build
+
+Alternatively, you can just have Docker/Podman installed - then you can run the server in a container, and you don't have to install any dependencies on your host system.
+
+Dockerfiles are provided in multiple variants, using Debian, Alpine or Fedora as base images, and using gcc or clang as the compiler. You can build the image with
+
+```sh
+docker build -t asset-server . -f Dockerfile.debian-gcc # use your preferred variant here
+docker run -p 8000:8000 -v ./asset-server.cfg:/app/asset-server.cfg asset-server
+```
+
+### Development build(s)
+
+There are a few more .cpp files in the repository, used for unit testing some utility functions and for debugging some parts of the project. To have these build, setup the CMake build directory with  
+`cmake -DASSET_SERVER_EXTRA_DEBUG=True ..`.
+
+This also adds a build flag `-fsanitize=address` to the build, which requires `libasan-dev` as an additional dependency.
 
 ## Upload race-condition safety
 
@@ -57,8 +104,6 @@ The existence check after creating the hashmap entry **is necessary** - in a sen
 |                                              | notify registered notifiers and remove entry | (wakes up)                        |
 |                                              | unlock                                       |                                   |
 |                                              | \<done>                                      | \<done>                           |
-
-
 
 Repository also contains working two Dockerfiles, using Debian and Alpine as base images.
 

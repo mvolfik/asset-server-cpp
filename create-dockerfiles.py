@@ -34,7 +34,7 @@ platforms = [
             "cmake",
             "make",
             "git",
-            "ca-certificates",
+            "ca-certificates",  # for git to clone https repos
         ],
         "runtime-deps": ["libvips", "libmagic1"],
     },
