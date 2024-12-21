@@ -61,6 +61,13 @@ init_image_processing(server_state& state)
     throw std::runtime_error("Failed to load default libmagic database");
 }
 
+void
+destroy_image_processing(server_state& state)
+{
+  magic_close(state.magic_cookie);
+  vips_shutdown();
+}
+
 class image_processor : public std::enable_shared_from_this<image_processor>
 {
 private:
@@ -116,7 +123,7 @@ private:
               << format << std::endl;
     img->write_to_buffer(("." + format).c_str(), (void**)&buffer, &size);
 
-    temp_folder->create_file(std::to_string(spec.width) + "ax" +
+    temp_folder->create_file(std::to_string(spec.width) + "x" +
                                std::to_string(spec.height) + "/" + filename +
                                "." + format,
                              buffer,
@@ -140,11 +147,11 @@ private:
       spec.formats.push_back(std::move(format));
     }
 
+    auto self = shared_from_this();
     for (unsigned i = 0; i < spec.formats.size(); ++i) {
-      group.add_task_from_weak(this->weak_from_this(),
-                               [resized, index, i](image_processor& self) {
-                                 self.save_to_format(resized, index, i);
-                               });
+      group.add_task([resized, index, i, self]() {
+        self->save_to_format(resized, index, i);
+      });
     }
   }
 
@@ -159,7 +166,12 @@ private:
                    "trusting the uploader"
                 << std::endl;
     } else {
-      original.formats[0] = magic_format;
+      std::size_t first_noninclusive = 0;
+      while (magic_format[first_noninclusive] != '/' &&
+             magic_format[first_noninclusive] != '\0') {
+        ++first_noninclusive;
+      }
+      original.formats[0] = std::string(magic_format, first_noninclusive);
     }
 
     temp_folder->create_file(
@@ -180,10 +192,9 @@ private:
       dimensions.push_back(spec);
     }
 
+    auto self = shared_from_this();
     for (unsigned i = 0; i < dimensions.size(); ++i) {
-      group.add_task_from_weak(
-        this->weak_from_this(),
-        [image, i](image_processor& self) { self.resize(image, i); });
+      group.add_task([image, i, self]() { self->resize(image, i); });
     }
   }
 
@@ -267,9 +278,8 @@ private:
 
     is_new = true;
 
-    group.add_task_from_weak(
-      this->weak_from_this(),
-      [&data](image_processor& self) { self.start_processing(data); });
+    group.add_task(
+      [&data, self = shared_from_this()]() { self->start_processing(data); });
 
     // add here any other tasks that can be done in parallel to image
     // processing. Note that at this point, the original dimensions_spec and the
@@ -283,6 +293,11 @@ private:
 
 public:
   /// Constructor only for use by create()
+  /// See the example on
+  /// https://en.cppreference.com/w/cpp/memory/enable_shared_from_this
+  /// - the constructor must be public, so that std::make_shared can create the
+  /// object, but we use the PrivateTag, so that you can only really instantiate
+  /// it through create()
   image_processor(PrivateTag,
                   server_state state,
                   ReadyHook&& ready_hook,
@@ -300,14 +315,12 @@ public:
   {
   }
 
-  ~image_processor() {
-    std::cerr << "Destroying image processor for " << hash << std::endl;
-  }
-
   /**
-   * Creates a new image processor, returning a shared pointer to it, and starts processing.
-   * 
-   * Since this class starts background tasks, it needs to ensure that it is not destroyed
+   * Creates a new image processor, returning a shared pointer to it, and starts
+   * processing.
+   *
+   * Since this class starts background tasks, it needs to ensure that it is not
+   * destroyed
    */
   static std::shared_ptr<image_processor> create(
     server_state state,
@@ -322,12 +335,13 @@ public:
     auto shared = std::make_shared<image_processor>(
       PrivateTag{}, state, std::move(ready_hook), data, suggested_filename);
 
-    shared->group.add_task_from_weak(
-      shared->weak_from_this(),
-      [&data](image_processor& self) { self.check_existence(data); });
+    shared->group.add_task(
+      [&data, shared]() { shared->check_existence(data); });
 
     return shared;
   }
+
+  void cancel() { group.cancel(); }
 
   std::vector<dimensions_spec> const& get_dimensions() const
   {

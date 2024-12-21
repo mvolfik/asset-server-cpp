@@ -14,10 +14,11 @@
 class thread_pool
 {
 private:
+  using Executor = std::function<void()>;
   std::mutex mutex;
   std::condition_variable cv;
   /// lock the mutex before accessing this, wait on CV if no tasks are available
-  std::deque<std::function<void()>> tasks;
+  std::deque<Executor> tasks;
   std::vector<std::thread> threads;
   std::atomic_bool shutdown{ false };
 
@@ -31,7 +32,7 @@ public:
           cv.wait(lock, [this] { return !tasks.empty() || shutdown; });
           if (shutdown)
             break;
-          std::function<void()> executor = std::move(tasks.front());
+          Executor executor = std::move(tasks.front());
           tasks.pop_front();
           lock.unlock();
           if (rand() % 2 == 0)
@@ -42,7 +43,7 @@ public:
     }
   }
 
-  void add_task(std::function<void()>&& task)
+  void add_task(Executor&& task)
   {
     std::unique_lock<std::mutex> lock(mutex);
     tasks.push_back(std::move(task));
@@ -98,6 +99,12 @@ private:
   std::function<void(std::exception const&)> on_error;
   std::function<void()> on_finish;
 
+  bool set_state_if_running(State new_state)
+  {
+    State old = State::Running;
+    return state.compare_exchange_strong(old, new_state);
+  }
+
 public:
   task_group(thread_pool& pool,
              std::function<void(std::exception const&)>&& on_error,
@@ -110,14 +117,28 @@ public:
 
   ~task_group()
   {
-    std::cerr << "Destroying task group, running: " << pending_tasks.load()
-              << std::endl;
+    std::int16_t pending = pending_tasks.load();
+    if (pending > 0) {
+      std::cerr << "Warning: destroying task group with  " << pending
+                << " pending tasks" << std::endl;
+    }
   }
 
-  bool set_state_if_running(State new_state)
+  class cancelled_error : public std::runtime_error
   {
-    State old = State::Running;
-    return state.compare_exchange_strong(old, new_state);
+  public:
+    cancelled_error()
+      : std::runtime_error("Task group was cancelled")
+    {
+    }
+  };
+
+  void cancel()
+  {
+    bool exchanged = set_state_if_running(State::Done_Error);
+    if (exchanged) {
+      on_error(cancelled_error());
+    }
   }
 
   template<typename Fn>
@@ -140,7 +161,6 @@ public:
     pool.add_task([this, task = std::move(task)]() {
       {
         auto s = state.load();
-        std::cerr << "state: " << static_cast<int>(s) << std::endl;
         if (s == State::Done_OK) {
           pending_tasks.fetch_sub(1);
           throw std::logic_error(
@@ -199,28 +219,6 @@ public:
         throw std::logic_error("The number of pending tasks is negative: " +
                                std::to_string(old_value - 1));
       }
-    });
-  }
-
-  /**
-   * Adds a task that is executed on a shared pointer, if the shared pointer is
-   * still valid. If the shared pointer is expired, the task is not executed and
-   * an exception is thrown from the task.
-   *
-   * FIXME: calling this is still quite ugly, the call sites look like this:
-   * group.add_task_from_weak(
-   *  this->weak_from_this(),
-   *  [&data](YouHaveToSpellTheWholeSelfTypeHere& self) { self.process(data);
-   * });
-   */
-  template<typename Cls, typename Fn>
-  void add_task_from_weak(std::weak_ptr<Cls> weak, Fn&& task)
-  {
-    add_task([weak, task = std::forward<Fn>(task)]() {
-      if (auto shared = weak.lock())
-        task(*shared);
-      else
-        throw std::runtime_error("Weak pointer expired");
     });
   }
 };

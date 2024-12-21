@@ -80,9 +80,6 @@ process_image(std::string const& filename, server_state state)
 int
 main(int argc, char* argv[])
 {
-  if (VIPS_INIT(argv[0]))
-    vips_error_exit(NULL);
-
   thread_pool pool(12);
 
   config cfg = config::parse("../asset-server.cfg");
@@ -97,7 +94,7 @@ main(int argc, char* argv[])
   };
   init_image_processing(state);
 
-  std::string filename("a.png");
+  std::string filename("/tmp/a.png");
   if (argc > 1)
     filename = argv[1];
 
@@ -107,6 +104,8 @@ main(int argc, char* argv[])
   }
 
   pool.blocking_shutdown();
+
+  destroy_image_processing(state);
 
   return ret;
 }

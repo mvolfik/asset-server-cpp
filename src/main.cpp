@@ -17,14 +17,15 @@ http_server(boost::asio::ip::tcp::acceptor& acceptor,
             boost::asio::ip::tcp::socket& socket,
             server_state state)
 {
-  acceptor.async_accept(socket, [&](boost::beast::error_code ec) {
-    // start the request, and "recurse" to accept next connection (it just
-    // calls the function again, passing the references through, and the
-    // previous call returns)
-    if (!ec)
-      std::make_shared<http_connection>(std::move(socket), state)->start();
-    http_server(acceptor, socket, state);
-  });
+  acceptor.async_accept(
+    socket, [&acceptor, &socket, state](boost::beast::error_code ec) {
+      // start the request, and "recurse" to accept next connection (it just
+      // calls the function again, passing the references through, and the
+      // previous call returns)
+      if (!ec)
+        std::make_shared<http_connection>(std::move(socket), state)->start();
+      http_server(acceptor, socket, state);
+    });
 }
 
 void
@@ -105,6 +106,8 @@ main(int argc, char* argv[])
 
     ctx.run();
     pool.blocking_shutdown();
+
+    destroy_image_processing(state);
   } catch (std::exception const& e) {
     std::cerr << "Error: " << e.what() << std::endl;
     return 1;
