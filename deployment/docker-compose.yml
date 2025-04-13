@@ -1,0 +1,18 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./data/final:/var/www/images
+      - ./www:/var/www
+  asset_server:
+    build:
+      context: ..
+      dockerfile: Dockerfile.alpine-gcc
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+      - ./config.cfg:/app/asset-server.cfg

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Responsive assets demo</title>
+    <script src="script.js" defer></script>
+    <style>
+      #gallery {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+      }
+      #gallery img {
+        max-width: min(23vw, var(--native-size));
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Responsive assets demo</h1>
+    <p>
+      <label>
+        Upload file: <input type="file" accept="image/*" id="fileInput" />
+      </label>
+    </p>
+    <p>Status: <span id="statusSpan"></span></p>
+    <div id="gallery">No images were uploaded yet</div>
+  </body>
+</html>

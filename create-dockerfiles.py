@@ -50,7 +50,7 @@ platforms = [
             "make",
             "git",
         ],
-        "runtime-deps": ["vips", "openssl", "libmagic"],
+        "runtime-deps": ["vips-cpp", "openssl", "libmagic"],
     },
     {
         "name": "fedora",

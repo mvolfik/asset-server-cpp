@@ -12,7 +12,7 @@ RUN cmake -DCMAKE_BUILD_TYPE=Release .. && make -j
 
 FROM alpine:3
 
-RUN apk add --no-cache vips openssl libmagic
+RUN apk add --no-cache vips-cpp openssl libmagic
 
 
 WORKDIR /app
