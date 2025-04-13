@@ -42,7 +42,7 @@ struct size_spec
   /**
    * Parse a size spec from a string.
    */
-  static size_spec parse(std::string_view  s)
+  static size_spec parse(std::string_view s)
   {
     size_spec spec;
     auto colon_pos = s.find(':');
@@ -192,11 +192,13 @@ struct config
 
   std::string auth_header_val;
 
-  std::unique_ptr<storage_interface> storage = nullptr;
+  std::unique_ptr<storage_backend> storage = nullptr;
 
   unsigned get_thread_pool_size() const
   {
-    return thread_pool_size.value_or(std::thread::hardware_concurrency() + 1);
+    if (!thread_pool_size)
+      return std::thread::hardware_concurrency() + 1;
+    return *thread_pool_size;
   }
 
   std::set<dimension_t> get_sizes(dimension_t original_width) const

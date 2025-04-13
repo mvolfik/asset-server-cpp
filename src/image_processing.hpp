@@ -96,9 +96,8 @@ private:
       // here you can add any work that needs to be done after all files are
       // ready in the staged folder
       if (!e) {
-        state.server_config.storage->commit_staged_folder(
-          std::move(temp_folder));
-      } // TODO: we don't free the staged folder if error happens
+        state.server_config.storage->commit_staged_folder(*temp_folder);
+      }
 
       {
         std::lock_guard lock(state.currently_processing_mutex);

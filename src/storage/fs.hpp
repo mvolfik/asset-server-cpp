@@ -7,15 +7,30 @@
 
 #include "interface.hpp"
 
+/**
+ * Implementation of the filesystem storage backend.
+ *
+ * See interface.hpp for description of the methods.
+ */
+
 class storage_fs;
 
 class fs_staged_folder : public staged_folder
 {
   friend class storage_fs;
 
+public:
+  // destructor to remove the folder if it was not committed
+  ~fs_staged_folder() override
+  {
+    if (should_cleanup)
+      std::filesystem::remove_all(path);
+  }
+
 private:
   std::filesystem::path path;
   std::string final_name;
+  bool should_cleanup = true;
 
   void create_file(std::string_view name,
                    std::uint8_t const* data,
@@ -38,7 +53,7 @@ private:
   }
 };
 
-class storage_fs : public storage_interface
+class storage_fs : public storage_backend
 {
 private:
   std::string data_dir;
@@ -68,6 +83,7 @@ public:
   {
     std::filesystem::remove_all(temp_dir);
     std::filesystem::create_directory(temp_dir);
+    // ensure the directory exists
     std::filesystem::create_directory(data_dir);
   }
 
@@ -89,12 +105,13 @@ public:
         auto subdir_path_datadir_relative =
           entry.path().string().substr(data_dir.size() + 1);
 
+        // recursively list the subfolder
         folder.children = walk_folder(subdir_path_datadir_relative);
-        if (!folder.children)
+        if (!folder.children) // sanity check
           throw std::runtime_error("walk_folder found a folder at " +
                                    entry.path().relative_path().string() +
                                    ", but recursive call returned nullopt");
-      }
+      } // else: a file, children are nullopt
       result.push_back(folder);
     }
     return result;
@@ -103,7 +120,6 @@ public:
   std::unique_ptr<staged_folder> create_staged_folder(
     std::string_view folder) override
   {
-
     std::filesystem::path full_path = temp_dir;
     full_path /= std::string(folder) + std::to_string(std::rand());
     std::cerr << "Creating staged folder at " << full_path << std::endl;
@@ -115,14 +131,13 @@ public:
     return result;
   }
 
-  void commit_staged_folder(std::unique_ptr<staged_folder> folder) override
+  void commit_staged_folder(staged_folder& folder) override
   {
-    auto fs_folder = dynamic_cast<fs_staged_folder*>(folder.get());
-    if (!fs_folder)
-      throw std::runtime_error("commit_staged_folder called with wrong type");
+    auto fs_folder = dynamic_cast<fs_staged_folder&>(folder);
     std::filesystem::path full_path = data_dir;
-    full_path /= fs_folder->final_name;
-    std::filesystem::rename(fs_folder->path, full_path);
+    full_path /= fs_folder.final_name;
+    std::filesystem::rename(fs_folder.path, full_path);
+    fs_folder.should_cleanup = false;
   }
 };
 
