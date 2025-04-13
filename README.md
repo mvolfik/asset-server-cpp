@@ -116,14 +116,10 @@ The existence check after creating the hashmap entry **is necessary** - in a sen
 |                                              | unlock                                       |                                   |
 |                                              | \<done>                                      | \<done>                           |
 
-Repository also contains working two Dockerfiles, using Debian and Alpine as base images.
-
-Windows: untested so far. libvips C++ bindings will likely need to be recompiled from source, I am deferring this for later.
-
 <!-- ## Testing
 
 `curl -i 'http://0.0.0.0:8000/api/upload?filename=any_filename_that_you_choose_suffix_doesnt_matter.png' -X POST --data-binary @$HOME/Pictures/image.jpeg`
-
+`sha256sum (find data -type f) | sort -k3,3 -k4n -t/`
 --- -->
 
 ## License
@@ -131,7 +127,7 @@ Windows: untested so far. libvips C++ bindings will likely need to be recompiled
 The HTTP server, forming the core of the project, was kickstarted with an example from https://github.com/boostorg/beast/blob/9d05ef58d19672d91475e6be6f746d9bdb031362/example/http/server/small/http_server_small.cpp, which is licensed under the Boost license. Therefore it is easiest to license this project under the Boost license as well.
 
 Copyright (c) 2017 Christopher M. Kohlhoff (chris at kohlhoff dot com)
-Copyright (c) 2024 Matěj Volf
+Copyright (c) 2025 Matěj Volf
 
 Distributed under the Boost Software License, Version 1.0. (See accompanying file LICENSE.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 

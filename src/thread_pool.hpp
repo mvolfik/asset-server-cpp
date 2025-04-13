@@ -35,8 +35,6 @@ public:
           Executor executor = std::move(tasks.front());
           tasks.pop_front();
           lock.unlock();
-          if (rand() % 2 == 0)
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
           executor();
         }
       });

@@ -219,9 +219,10 @@ private:
     if (!original_filename)
       throw std::runtime_error("No original file found for hash " + hash);
     filename = get_filename_without_extension(*original_filename);
-    // TODO: here we don't load the dimensions of the original and simply return
-    // 0. Getting the current dimensions requires loading the image, which I'm
-    // not sure is worth it.
+    // TODO: here we don't load the dimensions of the original and simply
+    // return a zero. Getting the correct dimensions requires loading the
+    // image, which I'm not sure is worth it. This will need an addition
+    // to the API to read a file.
     original = { 0, 0, { std::string(get_extension(*original_filename)) } };
 
     for (auto const& entry : *folder) {
@@ -357,6 +358,22 @@ public:
   bool get_is_new() const { return is_new; }
 
   std::weak_ptr<image_processor> get_weak() { return this->weak_from_this(); }
+
+  void write_result_json(std::ostream& stream) const
+  {
+    stream << "{\"hash\": \"" << hash << "\", \"filename\": \"" << filename
+           << "\", \"original\": ";
+    original.write_json(stream);
+    stream << ", \"variants\": [";
+    bool first = true;
+    for (auto const& d : dimensions) {
+      if (!first)
+        stream << ", ";
+      first = false;
+      d.write_json(stream);
+    }
+    stream << "]}";
+  }
 };
 
 #endif // IMAGE_PROCESSING_HPP

@@ -42,18 +42,48 @@ private:
 
   std::shared_ptr<image_processor> processor;
 
-  void respond_with_error(error_result const& error)
+  /** Returns true if response should be sent, false otherwise (in the case
+   * response was already sent) */
+  bool start_response()
   {
     socket_kill_deadline.cancel();
     processing_stop_deadline.cancel();
 
-    if (responded.exchange(true))
+    return !responded.exchange(true);
+  }
+
+  void respond_with_error(error_result const& error)
+  {
+    if (!start_response())
       return;
 
     response.result(error.response_code);
     response.set(boost::beast::http::field::content_type, "application/json");
     boost::beast::ostream(response.body())
       << "{\"error\": \"" << error.error << "\"}";
+
+    response.content_length(response.body().size());
+
+    boost::beast::http::async_write(
+      socket,
+      response,
+      [self = shared_from_this()](boost::beast::error_code ec, std::size_t) {
+        self->socket.shutdown(boost::asio::ip::tcp::socket::shutdown_send, ec);
+        self->socket.close();
+      });
+  }
+
+  void respond_ok()
+  {
+    if (!start_response())
+      return;
+
+    response.result(boost::beast::http::status::ok);
+    response.set(boost::beast::http::field::content_type, "application/json");
+    {
+      auto stream = boost::beast::ostream(response.body());
+      processor->write_result_json(stream);
+    }
 
     response.content_length(response.body().size());
 
@@ -161,11 +191,13 @@ private:
           return;
         }
 
-        if (shared)
-          shared->respond_with_error(
-            { "todo.done", boost::beast::http::status::ok });
-        std::cerr << "Processing finished" << std::endl;
-        // TODO
+        if (!shared) {
+          std::cerr << "Processing finished, but connection is dead"
+                    << std::endl;
+          return;
+        }
+
+        shared->respond_ok();
       },
       request.body(),
       std::string(*params.get("filename")));
