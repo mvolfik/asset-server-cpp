@@ -8,12 +8,16 @@ The project should be easy to build on any Linux (or even any Unix-ish?) system,
 
 - Basic build tools: `git`, `cmake`, `make`
 - A C++ compiler with support for C++20 or higher - tested with `g++` and `clang`
-- Development headers for `libvips`, `libmagic`, `libboost`.
+- Development headers for libraries:
+  - `vips` (for image operations)
+  - `magic` (for image format detection)
+  - `boost` (for HTTP server)
+  - `openssl` (for generating hashes)
 
 For example, on Debian-based systems, you can install all of these with
 
 ```sh
-apt install libvips-dev libmagic-dev libboost-dev cmake make git g++
+apt install libvips-dev libmagic-dev libboost-dev libssl-dev cmake make git g++
 ```
 
 Then simply checkout this repository and run the standard CMake build process:
@@ -38,11 +42,18 @@ From the build folder, use it with `./asset-server --config-file ../asset-server
 
 Alternatively, you can just have Docker/Podman installed - then you can run the server in a container, and you don't have to install any dependencies on your host system.
 
-Dockerfiles are provided in multiple variants, using Debian, Alpine or Fedora as base images, and using gcc or clang as the compiler. You can build the image with
+Dockerfiles are provided in multiple variants, using Debian, Alpine or Fedora as base images, and using gcc or clang as the compiler as a demonstration of platform-independence. You can build the image with
 
 ```sh
 docker build -t asset-server . -f Dockerfile.debian-gcc # use your preferred variant here
-docker run -p 8000:8000 -v ./asset-server.cfg:/app/asset-server.cfg asset-server
+```
+
+To run the image, you need to mount one (!) directory, which will contain two subdirectories - for temporary data, and for the final processed images. Due to the way Docker mounts work, these can't be two separate mounts.
+
+So edit your `asset-server.cfg` to use `./data/tmp` for the temporary directory, and `./data/final` for the final directory, and run the container with
+
+```sh
+docker run --rm -it -p 8000:8000 -v ./datus:/app/data -v ./asset-server.cfg:/app/asset-server.cfg asset-server
 ```
 
 ### Development build(s)
