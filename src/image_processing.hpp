@@ -127,6 +127,7 @@ private:
                                "." + format,
                              buffer,
                              size);
+    g_free(buffer);
   }
 
   void resize(std::shared_ptr<vips::VImage> img, unsigned index)
