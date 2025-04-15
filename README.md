@@ -66,7 +66,7 @@ If any error happens, the server will return `{"error": "error.identifier"}` wit
 - `error.bad_request`: an error was encountered while parsing the request, the request is most likely malformed
 - `error.internal`: an internal error happened, please check the server logs for more information
 
-This server does not provide any means of accessing the stored images. For that, you should use a separate service. You can find an example of a full deployment is is in the `example-deployment` folder - you can start it with `cd example-deployment && docker compose up -d`. This will start this server + Caddy, a reverse proxy and static file server with a simple example application. After it starts, you can open http://localhost:80/ in your browser, and you should see a simple web page with a form for uploading images. The uploaded images will be stored in the `example-deployment/data/final` folder, and a small gallery will build up in your browser.
+This server does not provide any means of accessing the stored images. For that, you should use a separate service. You can find an example of a full deployment is is in the `example-deployment` folder - you can start it with `cd example-deployment && docker compose up -d`. This will start this server + Caddy, a reverse proxy and static file server with a simple example application. After it starts, you can open http://localhost:8000/ in your browser, and you should see a simple web page with a form for uploading images. The uploaded images will be stored in the `example-deployment/data/final` folder, and a small gallery will build up in your browser.
 
 ## Build and run
 
@@ -193,7 +193,7 @@ Simple test of functionality:
 curl -s https://placecats.com/1000/2000 | curl -si "http://localhost:8000/api/upload?filename=cat.jpg" -X POST --data-binary @-
 ```
 
-Interactive manual test: run the deployment and open http://localhost:80/ in your browser. Upload a few images.
+Interactive manual test: run the deployment and open http://localhost:8000/ in your browser. Upload a few images.
 
 Unit tests of some utility functions (`src/test.cpp`):
 

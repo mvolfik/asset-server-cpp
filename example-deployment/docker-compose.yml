@@ -3,7 +3,7 @@ services:
     image: caddy:2-alpine
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "8000:8000"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - ./data/final:/var/www/images

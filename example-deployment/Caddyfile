@@ -4,7 +4,7 @@
     auto_https off
 }
 
-:80 {
+:8000 {
     reverse_proxy /api/upload asset_server:8000
     root * /var/www
     file_server
