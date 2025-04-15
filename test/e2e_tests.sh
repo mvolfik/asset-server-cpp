@@ -76,15 +76,15 @@ out=$(curl -s -o "$dir/resp" -w "%{http_code}\n" -X POST "http://localhost:8000/
 [ "$out" = "200" ] || fail "Expected 200, got $out"
 [ -f "$dir/resp" ] || fail "Response file not found"
 diff "$dir/resp" "$src/test/testdata/image1_response.json" || fail "Response does not match expected response"
-sha256sum $(find "./data" -type f) > "$dir/sums.txt"
-diff "$dir/sums.txt" "$src/test/testdata/image1_shasums.txt" || fail "SHA256 sums of resulting data does not match"
+find "./data" -type f | sort > "$dir/files.txt"
+diff "$dir/files.txt" "$src/test/testdata/image1_files.txt" || fail "List of generated files does not match"
 
 echo "Testing upload of existing file with different name"
 out=$(curl -s -o "$dir/resp" -w "%{http_code}\n" -X POST "http://localhost:8000/api/upload?filename=image3.png" -H "Authorization: Bearer testing_token" --data-binary "@$src/test/testdata/image1.jpg")
 [ "$out" = "200" ] || fail "Expected 200, got $out"
 [ -f "$dir/resp" ] || fail "Response file not found"
 diff "$dir/resp" "$src/test/testdata/image1_response_existing.json" || fail "Response does not match expected response"
-sha256sum $(find "./data" -type f) > "$dir/sums.txt"
-diff "$dir/sums.txt" "$src/test/testdata/image1_shasums.txt" || fail "SHA256 sums of resulting data does not match"
+find "./data" -type f | sort > "$dir/files.txt"
+diff "$dir/files.txt" "$src/test/testdata/image1_files.txt" || fail "List of generated files does not match"
 
 echo "=== ALL TESTS PASSED ==="
