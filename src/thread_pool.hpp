@@ -10,7 +10,8 @@
 #include <thread>
 #include <vector>
 
-/// Creates a pool of N threads, that then in parallel execute submitted tasks
+/** Creates a pool of N threads which then in parallel execute submitted tasks
+ */
 class thread_pool
 {
 private:
@@ -48,13 +49,21 @@ public:
     cv.notify_one();
   }
 
+  /**
+   * Stop any new tasks from running and wait for all currently running tasks to
+   * finish. This leaves some tasks enqueued, which will never be run.
+   */
   void blocking_shutdown()
   {
+    if (shutdown)
+      return;
     shutdown = true;
     cv.notify_all();
     for (auto& t : threads)
       t.join();
   }
+
+  ~thread_pool() { blocking_shutdown(); }
 };
 
 /**

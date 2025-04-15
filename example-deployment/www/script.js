@@ -19,8 +19,12 @@ function fillGallery() {
       )
       .join(", ");
     img.sizes = "24vw";
+    const a = document.createElement("a");
+    a.href = img.src;
+    a.target = "_blank";
+    a.appendChild(img);
 
-    gallery.appendChild(img);
+    gallery.appendChild(a);
   }
 }
 

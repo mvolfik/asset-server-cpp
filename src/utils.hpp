@@ -11,21 +11,28 @@
 #include <unidecode/unidecode.hpp>
 #include <unidecode/utf8_string_iterator.hpp>
 
+/** Various small utility functions used by different parts of this project */
+
+/**
+ * Class that builds a string of sanitized characters. It implements a push_back
+ * interface, so it can be passed to std::back_inserter and then used as an
+ * output iterator. Get the output string with take_result().
+ */
 class Sanitizer
 {
 private:
+  size_t max_length = 64;
   std::string result;
 
 public:
   Sanitizer() {}
+  Sanitizer(size_t max_length) : max_length(max_length) {}
 
   using value_type = char;
 
-  // implementing push_back and then using this with std::back_inserter is the
-  // easiest way to hook this as an output iterator to unidecode::Unidecode
   void push_back(char c)
   {
-    if (result.size() >= 64)
+    if (result.size() >= max_length)
       return;
 
     if (std::isalnum(c) || c == '-' || c == '_')
@@ -109,20 +116,16 @@ string_view_to_int(std::string_view s)
 
 using dimension_t = unsigned long;
 
+/** Perform integer division, rounding up. */
 dimension_t
 div_round_up(dimension_t a, dimension_t b)
 {
   return (a + b - 1) / b;
 }
 
-dimension_t
-div_round_close(dimension_t a, dimension_t b)
-{
-  return (a + b / 2) / b;
-}
-
 static const char* hex_chars = "0123456789abcdef";
 
+/** Return hexdigest of SHA256 hash of the input data */
 std::string
 sha256(std::vector<std::uint8_t> const& data)
 {

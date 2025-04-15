@@ -14,6 +14,15 @@ using namespace std::string_view_literals;
 #include "thread_pool.hpp"
 #include "utils.hpp"
 
+class image_loading_error : public std::runtime_error
+{
+public:
+  image_loading_error()
+    : std::runtime_error("")
+  {
+  }
+};
+
 struct dimensions_spec
 {
   dimension_t width;
@@ -77,7 +86,8 @@ private:
   server_state state;
   ReadyHook ready_hook;
 
-  std::shared_ptr<std::atomic<bool>> processing_flag;
+  /** Notifier from the server's hashmap, either to sleep on, or to notify others waiting for this image */
+  std::shared_ptr<std::atomic<bool>> processing_done_notifier;
   std::unique_ptr<staged_folder> temp_folder;
 
   std::vector<dimensions_spec> dimensions;
@@ -92,9 +102,7 @@ private:
    */
   void finalize(std::exception const* e)
   {
-    if (processing_flag) {
-      // here you can add any work that needs to be done after all files are
-      // ready in the staged folder
+    if (processing_done_notifier) {
       if (!e) {
         state.server_config.storage->commit_staged_folder(*temp_folder);
       }
@@ -103,9 +111,12 @@ private:
         std::lock_guard lock(state.currently_processing_mutex);
         state.currently_processing.erase(hash);
       }
-      processing_flag->store(false);
-      processing_flag->notify_all();
+      processing_done_notifier->store(false);
+      processing_done_notifier->notify_all();
     }
+    // here you can add any work that needs to be done after all files are
+    // ready in the staged folder
+
     std::invoke(ready_hook, e);
   }
 
@@ -118,8 +129,6 @@ private:
 
     std::uint8_t* buffer;
     size_t size;
-    std::cerr << "Saving " << spec.width << "x" << spec.height << " to "
-              << format << std::endl;
     img->write_to_buffer(("." + format).c_str(), (void**)&buffer, &size);
 
     temp_folder->create_file(std::to_string(spec.width) + "x" +
@@ -134,8 +143,6 @@ private:
   {
     auto& spec = dimensions[index];
 
-    std::cerr << "Resizing " << index << " to " << spec.width << "x"
-              << spec.height << std::endl;
     auto resized =
       std::make_shared<vips::VImage>(img->thumbnail_image(spec.width));
     spec.height = resized->height();
@@ -155,6 +162,10 @@ private:
     }
   }
 
+  /**
+   * Start processing after we've determined that this image is new, and any necessary
+   * synchronization was set up.
+   */
   void start_processing(std::vector<std::uint8_t> const& data)
   {
     temp_folder = state.server_config.storage->create_staged_folder(hash);
@@ -177,8 +188,14 @@ private:
     temp_folder->create_file(
       filename + "." + original.formats[0], data.data(), data.size());
 
-    auto image = std::make_shared<vips::VImage>(
-      vips::VImage::new_from_buffer(data.data(), data.size(), nullptr));
+    std::shared_ptr<vips::VImage> image;
+    try {
+      image = std::make_shared<vips::VImage>(
+        vips::VImage::new_from_buffer(data.data(), data.size(), nullptr));
+    } catch (vips::VError const& e) {
+      std::cerr << "Failed to load image: " << e.what() << std::endl;
+      throw image_loading_error();
+    }
     original.width = image->width();
     original.height = image->height();
 
@@ -238,6 +255,7 @@ private:
                                    " (expected " + filename + ")");
         spec.formats.push_back(std::string(get_extension(format_entry.name)));
       }
+      std::sort(spec.formats.begin(), spec.formats.end());
       dimensions.push_back(std::move(spec));
     }
 
@@ -259,11 +277,11 @@ private:
       auto result = state.currently_processing.emplace(
         hash, std::make_shared<std::atomic<bool>>(true));
       should_process_here = result.second;
-      processing_flag = result.first->second;
+      processing_done_notifier = result.first->second;
     }
 
     if (!should_process_here) {
-      processing_flag->wait(true);
+      processing_done_notifier->wait(true);
       if (!find_existing_data(hash))
         throw std::runtime_error("Failed to find data after another thread "
                                  "reportedly finished processing");
@@ -302,7 +320,6 @@ public:
   image_processor(PrivateTag,
                   server_state state,
                   ReadyHook&& ready_hook,
-                  std::vector<std::uint8_t> const& data,
                   std::string const& suggested_filename)
     : group(
         state.pool,
@@ -334,7 +351,7 @@ public:
     }
 
     auto shared = std::make_shared<image_processor>(
-      PrivateTag{}, state, std::move(ready_hook), data, suggested_filename);
+      PrivateTag{}, state, std::move(ready_hook), suggested_filename);
 
     shared->group.add_task(
       [&data, shared]() { shared->check_existence(data); });

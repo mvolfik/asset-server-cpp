@@ -28,6 +28,7 @@ test_sanitize_filename()
   assert_eq(sanitize_filename("abc/../../../etc/hosts"),
             "abc__________etc_hosts");
   assert_eq(sanitize_filename("abcčťäåαß"), "abcctaaass");
+  assert_eq(sanitize_filename(".git"), "_git");
 }
 
 void

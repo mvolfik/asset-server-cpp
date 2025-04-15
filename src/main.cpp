@@ -105,7 +105,6 @@ main(int argc, char* argv[])
     http_server(acceptor, socket, state);
 
     ctx.run();
-    pool.blocking_shutdown();
 
     destroy_image_processing(state);
   } catch (std::exception const& e) {

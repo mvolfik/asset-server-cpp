@@ -8,7 +8,7 @@ COPY CMakeLists.txt .
 COPY src src
 
 WORKDIR /app/build
-RUN cmake -DCMAKE_BUILD_TYPE=Release .. && make -j
+RUN cmake -DCMAKE_BUILD_TYPE=Release .. && make -j asset-server
 
 FROM {image}
 

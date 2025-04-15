@@ -173,6 +173,9 @@ parse_bytes(std::string_view s)
   return val;
 }
 
+/**
+ * Representation of complete server configuration. See the example configuration file at <repo_root>/asset-server.cfg for description of each field.
+ */
 struct config
 {
   std::string listen_host = "127.0.0.1";
@@ -181,12 +184,15 @@ struct config
   unsigned processing_timeout_secs = 8;
   unsigned socket_kill_timeout_secs = 10;
 
+  /** Do not access directly, use get_thread_pool_size() */
   std::optional<unsigned> thread_pool_size;
 
   unsigned upload_limit_bytes = 20 * 1024 * 1024;
 
+  /** Do not access directly (internal to the configuration), use get_sizes(width_of_your_image) */
   size_specs sizes;
 
+  /** Do not access directly (internal to the configuration), use get_formats(format_of_your_image) */
   std::unordered_map<std::string, std::vector<std::string>> formats;
   static constexpr const char* ALL_FORMATS_KEY = "*";
 
@@ -220,6 +226,9 @@ struct config
     return result;
   }
 
+  /**
+   * Parse a configuration file at the given path. 
+   */
   static config parse(const char* filename)
   {
     config cfg;

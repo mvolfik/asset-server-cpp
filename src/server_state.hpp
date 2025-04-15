@@ -11,8 +11,8 @@
 #include "thread_pool.hpp"
 
 /**
- * Lightweight structure to pass around references to "global" variables used in
- * many places of the server.
+ * Lightweight structure that can be cheaply copied. It can be used to pass around references to
+ * "global" variables used in many places of the server.
  */
 struct server_state
 {

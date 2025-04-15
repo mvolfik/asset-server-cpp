@@ -42,8 +42,10 @@ private:
 
   std::shared_ptr<image_processor> processor;
 
-  /** Returns true if response should be sent, false otherwise (in the case
-   * response was already sent) */
+  /**
+   * Returns true if response should be sent, false otherwise (in the case
+   * response was already sent)
+   */
   bool start_response()
   {
     socket_kill_deadline.cancel();
@@ -181,23 +183,31 @@ private:
       state,
       [self = weak_from_this()](std::exception const* e) {
         auto shared = self.lock();
-        if (e) {
-          if (shared)
-            shared->respond_with_error(
-              { "error.internal",
-                boost::beast::http::status::internal_server_error });
+        if (!e) {
+          if (!shared) {
+            std::cerr << "Processing finished, but connection is dead"
+                      << std::endl;
+            return;
+          }
 
-          std::cerr << "Error processing image: " << e->what() << std::endl;
+          shared->respond_ok();
           return;
         }
 
-        if (!shared) {
-          std::cerr << "Processing finished, but connection is dead"
-                    << std::endl;
+        auto loading_error = dynamic_cast<image_loading_error const*>(e);
+        if (loading_error && shared) {
+          shared->respond_with_error(
+            { "error.invalid_image", boost::beast::http::status::bad_request });
           return;
         }
 
-        shared->respond_ok();
+        std::cerr << "Error processing image: " << e->what() << std::endl;
+        if (shared) {
+          shared->respond_with_error(
+            { "error.internal",
+              boost::beast::http::status::internal_server_error });
+        }
+        return;
       },
       request.body(),
       std::string(*params.get("filename")));
