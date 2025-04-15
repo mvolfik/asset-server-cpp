@@ -208,7 +208,7 @@ make test
 End-to-end test of full functionality:
 
 ```sh
-python3 test/e2e_tests.py
+sh test/e2e_tests.sh
 ```
 
 ## License
