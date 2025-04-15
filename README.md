@@ -115,10 +115,18 @@ docker build -t asset-server . -f Dockerfile.debian-gcc # use your preferred var
 
 To run the image, you need to mount one (!) directory, which will contain two subdirectories - for temporary data, and for the final processed images. Due to the way Docker mounts work, these can't be two separate mounts.
 
-So edit your `asset-server.cfg` to use `./data/tmp` for the temporary directory, and `./data/final` for the final directory, and run the container with
+For running in a container, you will need these changes to your `asset-server.cfg`:
+
+```raw
+storage.data_dir=./data/final
+storage.temp_dir=./data/tmp
+listen_host=0.0.0.0
+```
+
+Then run the container with
 
 ```sh
-docker run --rm -it -p 8000:8000 -v ./datus:/app/data -v ./asset-server.cfg:/app/asset-server.cfg asset-server
+docker run --rm -it -p 8000:8000 -v ./data:/app/data -v ./asset-server.cfg:/app/asset-server.cfg asset-server
 ```
 
 ### Development build(s)
@@ -258,6 +266,7 @@ End-to-end test of full functionality:
 
 ```sh
 sh test/e2e_tests.sh
+sh test/e2e_tests.sh --docker alpine-gcc # or any other variant
 ```
 
 ## License
