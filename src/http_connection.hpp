@@ -115,58 +115,9 @@ private:
     return ret == 0;
   }
 
-  void process_request(boost::beast::error_code read_ec)
+  void process_upload_request(std::string_view filename)
   {
     auto const& request = request_parser.get();
-    response.version(request.version());
-    response.keep_alive(false);
-    response.set(boost::beast::http::field::content_type, "application/json");
-
-    if (read_ec) {
-      if (read_ec == boost::beast::http::error::body_limit) {
-        respond_with_error({ "error.payload_too_large",
-                             boost::beast::http::status::payload_too_large });
-      } else {
-        std::cerr << "Error reading request: " << read_ec.message()
-                  << std::endl;
-        respond_with_error(
-          { "error.bad_request", boost::beast::http::status::bad_request });
-      }
-
-      return;
-    }
-
-    auto base_url = ada::url(); // we only receive a partial URL like
-                                // /api/upload. We need some fake base URL, to
-                                // make ADA parse our incoming part correcly
-    auto target_path =  // this is a boost::string_view, we need to convert it
-      request.target(); // to std::string_view. ugh.
-    auto url = ada::parse<ada::url>(
-      std::string_view(target_path.data(), target_path.size()), &base_url);
-
-    if (!url) {
-      std::cerr << "Error parsing URL: " << request.target() << std::endl;
-      respond_with_error({ "error.internal",
-                           boost::beast::http::status::internal_server_error });
-      return;
-    }
-    if (url->get_pathname() != "/api/upload") {
-      respond_with_error(
-        { "error.not_found", boost::beast::http::status::not_found });
-      return;
-    }
-    if (request.method() != boost::beast::http::verb::post) {
-      respond_with_error({ "error.method_not_allowed",
-                           boost::beast::http::status::method_not_allowed });
-      return;
-    }
-
-    ada::url_search_params params(url->get_search());
-    if (!params.has("filename")) {
-      respond_with_error(
-        { "error.missing_filename", boost::beast::http::status::bad_request });
-      return;
-    }
 
     if (!is_authorized(request)) {
       respond_with_error(
@@ -210,7 +161,66 @@ private:
         return;
       },
       request.body(),
-      std::string(*params.get("filename")));
+      std::string(filename));
+  }
+
+  void process_request(boost::beast::error_code read_ec)
+  {
+    auto const& request = request_parser.get();
+    response.version(request.version());
+    response.keep_alive(false);
+    response.set(boost::beast::http::field::content_type, "application/json");
+
+    if (read_ec) {
+      if (read_ec == boost::beast::http::error::body_limit) {
+        respond_with_error({ "error.payload_too_large",
+                             boost::beast::http::status::payload_too_large });
+      } else {
+        std::cerr << "Error reading request: " << read_ec.message()
+                  << std::endl;
+        respond_with_error(
+          { "error.bad_request", boost::beast::http::status::bad_request });
+      }
+
+      return;
+    }
+
+    auto base_url = ada::url(); // we only receive a partial URL like
+                                // /api/upload. We need some fake base URL, to
+                                // make ADA parse our incoming part correcly
+    auto target_path =  // this is a boost::string_view, we need to convert it
+      request.target(); // to std::string_view. ugh.
+    auto url = ada::parse<ada::url>(
+      std::string_view(target_path.data(), target_path.size()), &base_url);
+
+    if (!url) {
+      std::cerr << "Error parsing URL: " << request.target() << std::endl;
+      respond_with_error({ "error.internal",
+                           boost::beast::http::status::internal_server_error });
+      return;
+    }
+    if (url->get_pathname() == "/api/upload") {
+      if (request.method() != boost::beast::http::verb::post) {
+        respond_with_error({ "error.method_not_allowed",
+                             boost::beast::http::status::method_not_allowed });
+        return;
+      }
+
+      ada::url_search_params params(url->get_search());
+      auto filename = params.get("filename");
+      if (!filename) {
+        respond_with_error({ "error.missing_filename",
+                             boost::beast::http::status::bad_request });
+        return;
+      }
+      return process_upload_request(*filename);
+    }
+
+    // any other handlers here
+
+    respond_with_error(
+      { "error.not_found", boost::beast::http::status::not_found });
+    return;
   }
 
   void kill_socket_on_deadline()
