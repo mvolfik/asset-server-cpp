@@ -79,6 +79,10 @@ diff "$dir/resp" "$src/test/testdata/image1_response.json" || fail "Response doe
 find "./data" -type f | sort > "$dir/files.txt"
 diff "$dir/files.txt" "$src/test/testdata/image1_files.txt" || fail "List of generated files does not match"
 
+subdir="$(tr < "$dir/resp" , "
+" | grep '"hash"' | cut -d'"' -f4)"
+diff "$dir/data/$subdir/image1.jpeg" "$src/test/testdata/image1.jpg" || fail "Server does not preserve uploaded file"
+
 echo "Testing upload of existing file with different name"
 out=$(curl -s -o "$dir/resp" -w "%{http_code}\n" -X POST "http://localhost:8000/api/upload?filename=image3.png" -H "Authorization: Bearer testing_token" --data-binary "@$src/test/testdata/image1.jpg")
 [ "$out" = "200" ] || fail "Expected 200, got $out"
