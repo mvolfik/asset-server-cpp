@@ -80,13 +80,17 @@ destroy_image_processing(server_state& state)
 class image_processor : public std::enable_shared_from_this<image_processor>
 {
 private:
-  using ReadyHook = std::function<void(std::exception const*)>;
+  using ReadyHook = std::function<void(std::exception const*,
+                                       std::shared_ptr<image_processor>)>;
 
   task_group group;
   server_state state;
   ReadyHook ready_hook;
 
-  /** Notifier from the server's hashmap, either to sleep on, or to notify others waiting for this image */
+  /**
+   * Notifier from the server's hashmap, either to sleep on, or to notify
+   * others waiting for this image
+   */
   std::shared_ptr<std::atomic<bool>> processing_done_notifier;
   std::unique_ptr<staged_folder> temp_folder;
 
@@ -117,7 +121,7 @@ private:
     // here you can add any work that needs to be done after all files are
     // ready in the staged folder
 
-    std::invoke(ready_hook, e);
+    std::invoke(ready_hook, e, shared_from_this());
   }
 
   void save_to_format(std::shared_ptr<vips::VImage> img,
@@ -163,10 +167,10 @@ private:
   }
 
   /**
-   * Start processing after we've determined that this image is new, and any necessary
-   * synchronization was set up.
+   * Start processing after we've determined that this image is new, and any
+   * necessary synchronization was set up.
    */
-  void start_processing(std::vector<std::uint8_t> const& data)
+  void load_image(std::vector<std::uint8_t> const& data)
   {
     temp_folder = state.server_config.storage->create_staged_folder(hash);
 
@@ -215,6 +219,15 @@ private:
     }
   }
 
+  /**
+   * Tries to find a folder with existing data for the given image hash.
+   *
+   * If none exists, returns false.
+   *
+   * If such folder exists, fills data members of this class with data
+   * discovered from the folder, so that the image processor can be used
+   * to send a response, and returns true.
+   */
   bool find_existing_data(std::string const& hash)
   {
     auto folder = state.server_config.storage->walk_folder(hash);
@@ -267,6 +280,8 @@ private:
     hash = sha256(data);
     hash.resize(16);
     if (find_existing_data(hash))
+      // existing data was found and filled into fields of this class, this task
+      // can end, which will cause the task_group to finish and call finalize()
       return;
 
     bool should_process_here;
@@ -298,7 +313,7 @@ private:
     is_new = true;
 
     group.add_task(
-      [&data, self = shared_from_this()]() { self->start_processing(data); });
+      [&data, self = shared_from_this()]() { self->load_image(data); });
 
     // add here any other tasks that can be done in parallel to image
     // processing. Note that at this point, the original dimensions_spec and the
@@ -311,12 +326,12 @@ private:
   };
 
 public:
-  /// Constructor only for use by create()
+  /// Constructor only for use by run()
   /// See the example on
   /// https://en.cppreference.com/w/cpp/memory/enable_shared_from_this
   /// - the constructor must be public, so that std::make_shared can create the
   /// object, but we use the PrivateTag, so that you can only really instantiate
-  /// it through create()
+  /// it through run()
   image_processor(PrivateTag,
                   server_state state,
                   ReadyHook&& ready_hook,
@@ -334,17 +349,18 @@ public:
   }
 
   /**
-   * Creates a new image processor, returning a shared pointer to it, and starts
-   * processing.
+   * Runs the image processing pipeline. When everything is done, ready_hook is
+   * called with a pointer to the processor, which you can use to read metadata
+   * about the created files.
    *
    * Since this class starts background tasks, it needs to ensure that it is not
-   * destroyed
+   * destroyed, so it manages itself inside through shared_ptr, and passes this
+   * ptr to the callback.
    */
-  static std::shared_ptr<image_processor> create(
-    server_state state,
-    ReadyHook&& ready_hook,
-    std::vector<std::uint8_t> const& data,
-    std::string const& suggested_filename)
+  static void run(server_state state,
+                  ReadyHook&& ready_hook,
+                  std::vector<std::uint8_t> const& data,
+                  std::string const& suggested_filename)
   {
     if (!state.magic_cookie) {
       throw std::runtime_error("Image processing not initialized");
@@ -355,8 +371,6 @@ public:
 
     shared->group.add_task(
       [&data, shared]() { shared->check_existence(data); });
-
-    return shared;
   }
 
   void cancel() { group.cancel(); }
@@ -373,8 +387,6 @@ public:
   dimensions_spec const& get_original() const { return original; }
 
   bool get_is_new() const { return is_new; }
-
-  std::weak_ptr<image_processor> get_weak() { return this->weak_from_this(); }
 
   void write_result_json(std::ostream& stream) const
   {

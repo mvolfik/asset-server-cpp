@@ -21,7 +21,7 @@ private:
   /// lock the mutex before accessing this, wait on CV if no tasks are available
   std::deque<Executor> tasks;
   std::vector<std::thread> threads;
-  std::atomic_bool shutdown{ false };
+  std::atomic<bool> shutdown{ false };
 
 public:
   thread_pool(unsigned n)
@@ -185,6 +185,9 @@ public:
 
       try {
         task();
+        // even if the task closure was the last owner of a shared_ptr to our owner,
+        // the closure exists (and thus holds the data) until the end of this function,
+        // so we can still safely use our data members below
       } catch (std::exception const& e) {
         bool exchanged = set_state_if_running(State::Done_Error);
         pending_tasks.fetch_sub(1);

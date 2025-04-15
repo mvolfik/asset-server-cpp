@@ -40,8 +40,6 @@ private:
 
   std::atomic<bool> responded{ false };
 
-  std::shared_ptr<image_processor> processor;
-
   /**
    * Returns true if response should be sent, false otherwise (in the case
    * response was already sent)
@@ -54,16 +52,8 @@ private:
     return !responded.exchange(true);
   }
 
-  void respond_with_error(error_result const& error)
+  void send_response()
   {
-    if (!start_response())
-      return;
-
-    response.result(error.response_code);
-    response.set(boost::beast::http::field::content_type, "application/json");
-    boost::beast::ostream(response.body())
-      << "{\"error\": \"" << error.error << "\"}";
-
     response.content_length(response.body().size());
 
     boost::beast::http::async_write(
@@ -75,7 +65,20 @@ private:
       });
   }
 
-  void respond_ok()
+  void respond_with_error(error_result const& error)
+  {
+    if (!start_response())
+      return;
+
+    response.result(error.response_code);
+    response.set(boost::beast::http::field::content_type, "application/json");
+    boost::beast::ostream(response.body())
+      << "{\"error\": \"" << error.error << "\"}";
+
+    send_response();
+  }
+
+  void respond_ok(image_processor& processor)
   {
     if (!start_response())
       return;
@@ -84,18 +87,10 @@ private:
     response.set(boost::beast::http::field::content_type, "application/json");
     {
       auto stream = boost::beast::ostream(response.body());
-      processor->write_result_json(stream);
+      processor.write_result_json(stream);
     }
 
-    response.content_length(response.body().size());
-
-    boost::beast::http::async_write(
-      socket,
-      response,
-      [self = shared_from_this()](boost::beast::error_code ec, std::size_t) {
-        self->socket.shutdown(boost::asio::ip::tcp::socket::shutdown_send, ec);
-        self->socket.close();
-      });
+    send_response();
   }
 
   template<typename T>
@@ -130,9 +125,9 @@ private:
     std::cerr << "Starting processing of image of size "
               << request.body().size() << " bytes" << std::endl;
 
-    processor = image_processor::create(
+    image_processor::run(
       state,
-      [self = weak_from_this()](std::exception const* e) {
+      [self = weak_from_this()](std::exception const* e, std::shared_ptr<image_processor> proc) {
         auto shared = self.lock();
         if (!e) {
           if (!shared) {
@@ -141,7 +136,7 @@ private:
             return;
           }
 
-          shared->respond_ok();
+          shared->respond_ok(*proc);
           return;
         }
 
@@ -158,7 +153,6 @@ private:
             { "error.internal",
               boost::beast::http::status::internal_server_error });
         }
-        return;
       },
       request.body(),
       std::string(filename));
@@ -243,11 +237,10 @@ private:
 
   void stop_processing_on_deadline()
   {
-    auto self = shared_from_this();
     processing_stop_deadline.expires_from_now(
       std::chrono::seconds(state.server_config.processing_timeout_secs));
 
-    processing_stop_deadline.async_wait([self](boost::beast::error_code ec) {
+    processing_stop_deadline.async_wait([self = shared_from_this()](boost::beast::error_code ec) {
       if (ec) {
         if (ec.value() != boost::asio::error::operation_aborted)
           std::cerr << "Error waiting on processing deadline: " << ec.message()
