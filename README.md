@@ -70,6 +70,10 @@ This server does not provide any means of accessing the stored images. For that,
 
 ## Build and run
 
+_Quickstart for Debian-based systems: run `sh scripts/debian-build.sh`. This will install dependencies as listed build and build the project._
+
+_Quickstart with Docker: run `mkdir asset-data; sh scripts/docker-build-and-run.sh ./asset-data` to build the project and run it in a container._
+
 The project should be easy to build on any Linux system, provided you have these development libraries available:
 
 - Basic build tools: `git`, `cmake`, `make`
