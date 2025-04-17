@@ -148,31 +148,41 @@ This also adds a build flag `-fsanitize=address` to the build, which requires `l
 
 ## Developer documentation (= implementation design)
 
+![class diagram](diagram.png)
+
+Meaning of arrows in the class diagram:
+
+- solid line: owns/creates
+- dashed line: stores a reference to
+- dotted line: high degree of cooperation, but no ownership
+
 The code is organized into a the following main components:
 
 ### `src/utils.hpp`, `src/server_state.hpp`
 
-Utils contain definitions of various convenience functions and adapters for cumbersome APIs from some dependencies, server state is a cheaply copyable struct for data we need to pass to many places in the server. Nothing too interesting.
+Utils contain definitions of various convenience functions and adapters for cumbersome APIs from some dependencies.
+
+**`server_state`** is a cheap-to-copy struct for data we need to pass to many places in the server. Nothing too interesting.
 
 ### `src/storage/`
 
-Definition of the storage backend interface, and the filesystem-based implementation. The API uses a "staging" folder for preparation of the converted files, and then has a "commit" operation that should atomically move this folder into the data area. This has the advantage that the data area is always in a consistent state - it doesn't contain any half-written files or a folder with only some of the variants that should be generated.
+Definition of the **`storage_backend`** interface, and the filesystem-based implementation. The API uses a "staging" folder for preparation of the converted files, and then has a "commit" operation that should atomically move this folder into the data area. This has the advantage that the data area is always in a consistent state - it doesn't contain any half-written files or a folder with only some of the variants that should be generated.
 
 ### `src/config.hpp`
 
-Pretty straightforward code to parse the configuration file and provide access to the values. Instantiates a storage backend based on `storage.type`, then forwards any `storage.*` values to it. At the end of parsing calls `backend.validate()` to allow the backend to check if it is ready for use.
+Pretty straightforward code to parse the configuration file into the **`config`** structure and provide access to the values. Instantiates a storage backend based on `storage.type`, then forwards any `storage.*` values to it. At the end of parsing calls `backend.validate()` to allow the backend to check if it is ready for use.
 
 ### `src/thread_pool.hpp`
 
-Since processing image files is computationally expensive, we want to utilize multiple threads. This module defines a simple thread pool and a task group. Task group allows us to easily manage thread pool tasks that are part of one bigger job (in our case the complete processing of an image uploaded to the server). Tasks from a group can spawn other tasks, and the owner of the task group can register a callback that will be called when all tasks in the group are done, even without knowing how many tasks will eventually be spawned.
+Since processing image files is computationally expensive, we want to utilize multiple threads. This module defines a simple **`thread_pool`** and a **`task_group`**. Task group allows us to easily manage thread pool tasks that are part of one bigger job (in our case the complete processing of an image uploaded to the server). Tasks from a group can spawn other tasks, and the owner of the task group can register a callback that will be called when all tasks in the group are done, even without knowing how many tasks will eventually be spawned.
 
 ### `src/http_connection.hpp`
 
-Some boilerplate-y code for handling HTTP connections, parsing requests, verifying authentication and sending responses. After extracting everything necessary from the request, creates an `image_processor`, registers a callback for when the processing is done, and then simply returns. The Boost library is made for such asynchronous code - it holds this instance alive as long as the connection is alive. When the processing _finish_ callback is called, a response is sent to the connection.
+Some boilerplate-y code for asynchronous handling of HTTP connections. The **`http_connection`** class parses the request, verifies necessary authentication and delegates processing to `image_processor`, providing a callback to send a response. After image processing is started, no method of the `http_connection` class is running, it simply returns to the Boost async manager. Boost also takes care of keeping this instance as long as the connection is alive. When the processing _finish_ callback is called, a response is sent to the connection, and then the connection is destroyed.
 
 ### `src/image_processing.hpp`
 
-Pretty much all of the _business logic_. Image processing is handled in multiple stages:
+Pretty much all of the _business logic_. **`image_processing`** handles the job in multiple stages which pass data to each other. The stages are:
 
   1. `check_existence`: check if this image file has been uploaded before, else starts further processing.
   2. `load_image`: loads the image from the request into Vips, determines all the sizes that we need to generate and starts the resize tasks
@@ -185,7 +195,7 @@ After the last task finishes, the task group calls the registered `finalize()` c
 
 ### Use-after-free safety
 
-What complicates the code here a bit is the fact that `http_connection` can't be the only _owner_ of `image_processor`. The connection instance will be destroyed if the HTTP client that sent the request disconnects, or when the processing timeout runs out. But at that moment, some processing tasks might still be running, so we can't release their data, so we can't destroy `image_processor`.
+What complicates the code in `image_processor` a bit is the fact that `http_connection` can't be the sole _owner_ of it. The connection instance will be destroyed if the HTTP client that sent the request disconnects, or when the processing timeout runs out. But at that moment, some processing tasks might still be running, so we can't release their data, so we can't destroy `image_processor`.
 
 So, to handle this safely, without risking any use-after-free bugs, `image_processor` is wrapped in `shared_ptr`, and a copy of this shared_ptr is stored in each task. This makes `image_processor` live as long as there's at least one task remaining, and `http_connection` doesn't need to manage it at all.
 
