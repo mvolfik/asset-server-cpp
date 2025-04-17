@@ -107,6 +107,12 @@ This will produce an executable named `asset-server` in your repository. To run 
 
 From the build folder, you can use the example configuration file with `./asset-server --config-file ../asset-server.cfg`. If you don't provide the `--config-file` argument, the server will look for a file named `asset-server.cfg` in the current working directory.
 
+### Run-time dependencies
+
+If you run the application on the same machine where you built it, you already have everything necessary. However, if you are building this elsewhere, and then copying it to a similar system without the project dependencies, you will need to install the shared libraries that this project links to: `libvips`, `libmagic`, `libssl` and `libstdc++`. The latter two are quite likely preinstalled.
+
+This project has no specific hardware dependencies (libvips does not require a GPU). It has been tested on `x86_64` and `aarch64` CPU architectures, and should generally run on any platform supported by the dependencies.
+
 ### Docker build
 
 Alternatively, if you have Docker/Podman installed, then you can run the server in a container without installing any dependencies on your host system.
